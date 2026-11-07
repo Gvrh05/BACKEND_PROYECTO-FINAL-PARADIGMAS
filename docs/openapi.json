@@ -1,0 +1,57 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Profelink Kahoot Monolith API",
+    "description": "Backend API para la plataforma interactiva tipo Kahoot en arquitectura Vertical Slice (Monolito Modular)",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000/kahoot-api",
+      "description": "Servidor de Desarrollo Local"
+    }
+  ],
+  "paths": {
+    "/quizzes": {
+      "get": {
+        "summary": "Listar cuestionarios",
+        "tags": ["Quizzes"],
+        "responses": {
+          "200": {
+            "description": "Lista de cuestionarios obtenida con éxito"
+          }
+        }
+      },
+      "post": {
+        "summary": "Crear un nuevo cuestionario",
+        "tags": ["Quizzes"],
+        "responses": {
+          "201": {
+            "description": "Cuestionario creado con éxito"
+          }
+        }
+      }
+    },
+    "/results/{pin}": {
+      "get": {
+        "summary": "Obtener resultados de una sesión por PIN",
+        "tags": ["Results"],
+        "parameters": [
+          {
+            "name": "pin",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultados de la sesión"
+          }
+        }
+      }
+    }
+  }
+}
