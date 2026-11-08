@@ -2,18 +2,25 @@ import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { QuizzesService } from '../services/quizzes.service';
 import { CreateQuizDto } from '../dto/create-quiz.dto';
 import { AddQuestionDto } from '../dto/add-question.dto';
+import { CurrentUser, AuthenticatedUser } from '../../../shared/decorators/current-user.decorator';
 
 @Controller('quizzes')
 export class QuizzesController {
   constructor(private readonly quizzesService: QuizzesService) {}
 
   @Post()
-  create(@Body() createQuizDto: CreateQuizDto) {
-    return this.quizzesService.create(createQuizDto);
+  create(
+    @Body() createQuizDto: CreateQuizDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.quizzesService.create({
+      ...createQuizDto,
+      authorId: user.userId,
+    } as any);
   }
 
   @Get()
-  findAll() {
+  findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.quizzesService.findAll();
   }
 
