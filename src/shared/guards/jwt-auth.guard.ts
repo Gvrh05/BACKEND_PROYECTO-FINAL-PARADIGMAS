@@ -16,7 +16,17 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  private readonly secret: string;
+
+  constructor(private readonly reflector: Reflector) {
+    const secret = process.env.JWT_SECRET;
+    if (!secret?.trim()) {
+      throw new Error(
+        'JWT_SECRET es obligatorio y debe coincidir con el servicio de identidad',
+      );
+    }
+    this.secret = secret;
+  }
 
   canActivate(context: ExecutionContext): boolean {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -32,7 +42,9 @@ export class JwtAuthGuard implements CanActivate {
     const authHeader = request.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Token de autenticación faltante o inválido');
+      throw new UnauthorizedException(
+        'Token de autenticación faltante o inválido',
+      );
     }
 
     const token = authHeader.split(' ')[1];
@@ -41,14 +53,32 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const secret = process.env.JWT_SECRET || 'secret_key_compartida';
-      const payload = jwt.verify(token, secret) as any;
+      const payload = jwt.verify(token, this.secret, { algorithms: ['HS256'] });
+      if (
+        typeof payload === 'string' ||
+        typeof payload.sub !== 'string' ||
+        !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(
+          payload.sub,
+        )
+      ) {
+        throw new UnauthorizedException('Identidad de token inválida');
+      }
 
       request['user'] = {
-        userId: payload.sub,
-        username: payload.username || payload.name,
-        role: payload.role,
         ...payload,
+        userId: payload.sub,
+        username:
+          typeof payload.username === 'string'
+            ? payload.username
+            : typeof payload.name === 'string'
+              ? payload.name
+              : '',
+        role:
+          payload.role === 'PROFESOR'
+            ? 'PROFESOR'
+            : payload.role === 'ESTUDIANTE'
+              ? 'ESTUDIANTE'
+              : undefined,
       };
 
       return true;

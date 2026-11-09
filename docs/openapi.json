@@ -3,7 +3,7 @@
   "info": {
     "title": "Profelink Kahoot Monolith API",
     "description": "Backend API para la plataforma interactiva tipo Kahoot en arquitectura Vertical Slice (Monolito Modular)",
-    "version": "1.0.0"
+    "version": "2.0.0"
   },
   "servers": [
     {
@@ -11,25 +11,589 @@
       "description": "Servidor de Desarrollo Local"
     }
   ],
-  "paths": {
-    "/quizzes": {
-      "get": {
-        "summary": "Listar cuestionarios",
-        "tags": ["Quizzes"],
-        "responses": {
-          "200": {
-            "description": "Lista de cuestionarios obtenida con éxito"
+  "security": [{ "bearerAuth": [] }],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "CreateQuiz": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 150 },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "nullable": true
+          },
+          "coverImageUrl": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true,
+            "description": "Solo HTTP(S)"
           }
         }
       },
-      "post": {
-        "summary": "Crear un nuevo cuestionario",
-        "tags": ["Quizzes"],
-        "responses": {
-          "201": {
-            "description": "Cuestionario creado con éxito"
+      "UpdateQuiz": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 150 },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "nullable": true
+          },
+          "coverImageUrl": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true,
+            "description": "Solo HTTP(S)"
           }
         }
+      },
+      "QuestionOptionInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "isCorrect"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "isCorrect": { "type": "boolean" }
+        }
+      },
+      "CreateQuestion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["questionText", "options"],
+        "properties": {
+          "questionText": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "timeLimitSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300,
+            "default": 20
+          },
+          "points": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "default": 1000
+          },
+          "options": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "Exactamente una opción correcta; se conserva el orden",
+            "items": { "$ref": "#/components/schemas/QuestionOptionInput" }
+          }
+        },
+        "example": {
+          "questionText": "¿Cuál es un lenguaje funcional?",
+          "options": [
+            { "text": "Haskell", "isCorrect": true },
+            { "text": "HTML", "isCorrect": false },
+            { "text": "CSS", "isCorrect": false },
+            { "text": "JSON", "isCorrect": false }
+          ]
+        }
+      },
+      "UpdateQuestion": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "questionText": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "timeLimitSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300
+          },
+          "points": { "type": "integer", "minimum": 0, "maximum": 100000 },
+          "options": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "Reemplazo completo, con nuevos UUID y una única correcta",
+            "items": { "$ref": "#/components/schemas/QuestionOptionInput" }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": ["statusCode", "timestamp", "path", "error"],
+        "properties": {
+          "statusCode": { "type": "integer" },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "path": { "type": "string" },
+          "error": { "oneOf": [{ "type": "string" }, { "type": "object" }] }
+        }
+      },
+      "QuizSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "authorId",
+          "title",
+          "description",
+          "coverImageUrl",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "readOnly": true },
+          "authorId": { "type": "string", "format": "uuid", "readOnly": true },
+          "title": { "type": "string", "minLength": 1, "maxLength": 150 },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "nullable": true
+          },
+          "coverImageUrl": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          }
+        }
+      },
+      "QuizDetail": {
+        "allOf": [
+          { "$ref": "#/components/schemas/QuizSummary" },
+          {
+            "type": "object",
+            "required": ["questions"],
+            "properties": {
+              "questions": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/QuestionResource" }
+              }
+            }
+          }
+        ]
+      },
+      "QuestionOptionResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "text", "isCorrect"],
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "readOnly": true },
+          "text": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "isCorrect": { "type": "boolean" }
+        }
+      },
+      "QuestionResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "quizId",
+          "questionText",
+          "timeLimitSeconds",
+          "points",
+          "options",
+          "imageUrl"
+        ],
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "readOnly": true },
+          "quizId": { "type": "string", "format": "uuid", "readOnly": true },
+          "questionText": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "timeLimitSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300,
+            "default": 20
+          },
+          "points": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "default": 1000
+          },
+          "options": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "Exactamente una isCorrect=true y tres false; en orden",
+            "items": { "$ref": "#/components/schemas/QuestionOptionResource" }
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true,
+            "description": "Ruta privada relativa al origen de API; requiere Bearer, nunca incluye token"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "QuizId": {
+        "name": "quizId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      },
+      "QuestionId": {
+        "name": "questionId",
+        "in": "path",
+        "required": true,
+        "schema": { "type": "string", "format": "uuid" }
+      }
+    },
+    "responses": {
+      "QuizResource": {
+        "description": "Cuestionario persistido; recurso directo, sin wrapper data",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/QuizSummary" }
+          }
+        }
+      },
+      "QuestionResource": {
+        "description": "Pregunta persistida con cuatro opciones",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/QuestionResource" }
+          }
+        }
+      },
+      "NoContent": { "description": "Eliminado sin cuerpo de respuesta" },
+      "PayloadTooLarge": {
+        "description": "Archivo superior al límite configurado (5 MiB por defecto)",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "UnsupportedImage": {
+        "description": "No es JPEG/PNG/WebP válido, tipo falsificado o más de 25 megapíxeles",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Error interno sin detalles SQL o rutas físicas",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Entrada inválida o PATCH vacío",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Token ausente, inválido o expirado",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Recurso inexistente, ajeno o fuera de su cuestionario",
+        "content": {
+          "application/json": {
+            "schema": { "$ref": "#/components/schemas/Error" }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/quizzes": {
+      "get": {
+        "summary": "Listar solo cuestionarios propios, del más reciente al más antiguo",
+        "tags": ["Quizzes"],
+        "responses": {
+          "200": {
+            "description": "Lista propia o arreglo vacío",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/QuizSummary" }
+                }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      },
+      "post": {
+        "summary": "Crear un cuestionario propio inicialmente sin preguntas",
+        "tags": ["Quizzes"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateQuiz" },
+              "example": { "title": "Paradigmas", "description": "Repaso" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/QuizResource" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/quizzes/{quizId}": {
+      "parameters": [{ "$ref": "#/components/parameters/QuizId" }],
+      "get": {
+        "summary": "Consultar cuestionario propio con preguntas y opciones",
+        "tags": ["Quizzes"],
+        "responses": {
+          "200": {
+            "description": "Detalle propio",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/QuizDetail" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "summary": "Editar metadatos propios; null quita descripción o portada",
+        "tags": ["Quizzes"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateQuiz" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/QuizResource" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "summary": "Eliminar cuestionario, preguntas y opciones; revocar imágenes y encolar limpieza",
+        "tags": ["Quizzes"],
+        "responses": {
+          "204": { "$ref": "#/components/responses/NoContent" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/quizzes/{quizId}/questions": {
+      "parameters": [{ "$ref": "#/components/parameters/QuizId" }],
+      "get": {
+        "summary": "Listar preguntas propias en orden de creación",
+        "tags": ["Questions"],
+        "responses": {
+          "200": {
+            "description": "Preguntas o arreglo vacío",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/QuestionResource" }
+                }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "summary": "Crear pregunta propia con cuatro opciones y una correcta",
+        "tags": ["Questions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateQuestion" }
+            }
+          }
+        },
+        "responses": {
+          "201": { "$ref": "#/components/responses/QuestionResource" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/quizzes/{quizId}/questions/{questionId}": {
+      "parameters": [
+        { "$ref": "#/components/parameters/QuizId" },
+        { "$ref": "#/components/parameters/QuestionId" }
+      ],
+      "get": {
+        "summary": "Consultar una pregunta del cuestionario propio",
+        "tags": ["Questions"],
+        "responses": {
+          "200": { "$ref": "#/components/responses/QuestionResource" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "summary": "Editar pregunta y sustituir opciones como conjunto atómico",
+        "tags": ["Questions"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateQuestion" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/QuestionResource" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "delete": {
+        "summary": "Eliminar pregunta, opciones y asociación de imagen",
+        "tags": ["Questions"],
+        "responses": {
+          "204": { "$ref": "#/components/responses/NoContent" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/quizzes/{quizId}/questions/{questionId}/image": {
+      "parameters": [
+        { "$ref": "#/components/parameters/QuizId" },
+        { "$ref": "#/components/parameters/QuestionId" }
+      ],
+      "put": {
+        "summary": "Adjuntar o sustituir una imagen privada",
+        "tags": ["Question Images"],
+        "description": "Un único archivo JPEG, PNG o WebP en image, sin campos adicionales. 5 MiB por defecto (MAX_FILE_SIZE), hasta 25 megapíxeles. La firma y decodificación deben coincidir con el MIME declarado. La imagen anterior se conserva si falla la carga o el commit.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["image"],
+                "properties": {
+                  "image": { "type": "string", "format": "binary" }
+                }
+              },
+              "encoding": {
+                "image": { "contentType": "image/jpeg, image/png, image/webp" }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/QuestionResource" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedImage" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "get": {
+        "summary": "Leer el binario con token Bearer del propietario",
+        "tags": ["Question Images"],
+        "description": "Sin imagen responde 404. imageUrl incluye /kahoot-api y es relativa al origen, no a VITE_API_URL. No hay ruta estática pública ni token en query. El navegador debe descargar como blob autenticado.",
+        "responses": {
+          "200": {
+            "description": "Binario privado",
+            "headers": {
+              "Cache-Control": {
+                "schema": { "type": "string", "example": "private, no-store" }
+              },
+              "X-Content-Type-Options": {
+                "schema": { "type": "string", "example": "nosniff" }
+              }
+            },
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "summary": "Quitar imagen sin borrar la pregunta",
+        "tags": ["Question Images"],
+        "description": "204 también si la pregunta propia ya no tiene imagen; el acceso se revoca al confirmar y el archivo se limpia con reintentos persistentes.",
+        "responses": {
+          "204": { "$ref": "#/components/responses/NoContent" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Salud pública",
+        "security": [],
+        "responses": { "200": { "description": "API disponible" } }
       }
     },
     "/results/{pin}": {
