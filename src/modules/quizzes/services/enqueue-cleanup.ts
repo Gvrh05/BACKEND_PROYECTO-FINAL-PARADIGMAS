@@ -5,12 +5,13 @@ export async function enqueueCleanup(
   manager: EntityManager,
   keys: string[],
 ): Promise<void> {
-  if (!keys.length) return;
+  const userUploads = keys.filter((key) => !/^q(?:[1-9]|10)\.png$/.test(key));
+  if (!userUploads.length) return;
   await manager
     .createQueryBuilder()
     .insert()
     .into(FileCleanupJob)
-    .values([...new Set(keys)].map((storageKey) => ({ storageKey })))
+    .values([...new Set(userUploads)].map((storageKey) => ({ storageKey })))
     .orIgnore()
     .execute();
 }

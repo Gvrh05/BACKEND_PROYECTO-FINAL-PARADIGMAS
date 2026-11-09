@@ -19,11 +19,13 @@ export async function createTestHarness() {
   const previous = {
     DATABASE_URL: process.env.DATABASE_URL,
     JWT_SECRET: process.env.JWT_SECRET,
+    JWT_AUDIENCE: process.env.JWT_AUDIENCE,
     UPLOADS_DEST: process.env.UPLOADS_DEST,
     MAX_FILE_SIZE: process.env.MAX_FILE_SIZE,
   };
   process.env.DATABASE_URL = database.url;
   process.env.JWT_SECRET = 'quiz-authoring-tests-only';
+  process.env.JWT_AUDIENCE = 'kahoot-api';
   process.env.UPLOADS_DEST = uploads;
   process.env.MAX_FILE_SIZE = '5242880';
   const userA = randomUUID();
@@ -32,7 +34,7 @@ export async function createTestHarness() {
     jwt.sign(
       { sub: id, username: 'test-user', role: 'PROFESOR' },
       process.env.JWT_SECRET!,
-      { expiresIn: '1h', algorithm: 'HS256' },
+      { expiresIn: '1h', algorithm: 'HS256', audience: 'kahoot-api' },
     );
   const apps = new Set<INestApplication>();
   return {

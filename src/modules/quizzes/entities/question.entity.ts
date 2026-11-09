@@ -46,6 +46,9 @@ export class Question {
   })
   imageStorageKey: string | null;
 
+  @Column({ name: 'image_url', type: 'text', nullable: true })
+  imageUrl: string | null;
+
   @Column({ name: 'image_mime_type', type: 'text', nullable: true })
   imageMimeType: string | null;
 

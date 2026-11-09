@@ -9,11 +9,13 @@ import {
 } from '@nestjs/websockets';
 import { DefaultEventsMap, Server, Socket } from 'socket.io';
 import { Injectable, Logger } from '@nestjs/common';
+import { isUUID } from 'class-validator';
 import * as jwt from 'jsonwebtoken';
 import { GameSessionService } from '../services/game-session.service';
 import { JoinRoomDto } from '../dto/join-room.dto';
 import { SubmitAnswerDto } from '../dto/submit-answer.dto';
 import { SOCKET_EVENTS } from '../../../shared/utils/constants';
+import { QuizzesService } from '../../quizzes/services/quizzes.service';
 
 interface AuthenticatedUser {
   userId: string;
@@ -44,7 +46,10 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   private readonly logger = new Logger(GameGateway.name);
 
-  constructor(private readonly gameSessionService: GameSessionService) {}
+  constructor(
+    private readonly gameSessionService: GameSessionService,
+    private readonly quizzes: QuizzesService,
+  ) {}
 
   /**
    * Valida el token JWT emitido por el microservicio auth al momento de conectar el WebSocket.
@@ -72,8 +77,12 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
 
     try {
-      const secret = process.env.JWT_SECRET || 'secret_key_compartida';
-      const payload = jwt.verify(token, secret) as jwt.JwtPayload & {
+      const secret = process.env.JWT_SECRET;
+      if (!secret) throw new Error('JWT_SECRET is required');
+      const payload = jwt.verify(token, secret, {
+        algorithms: ['HS256'],
+        audience: process.env.JWT_AUDIENCE?.trim() || 'kahoot-api',
+      }) as jwt.JwtPayload & {
         sub?: string;
         username?: string;
         name?: string;
@@ -120,6 +129,27 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       `Usuario ${client.data.user.username} (Socket ${client.id}) se unió a la sala ${payload.pin} como ${payload.playerName}`,
     );
     return this.gameSessionService.joinRoom(payload);
+  }
+
+  @SubscribeMessage(SOCKET_EVENTS.CREATE_SESSION)
+  async handleCreateSession(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() payload: { quizId?: unknown },
+  ) {
+    if (!client.data.user) {
+      client.emit('unauthorized', { message: 'No autenticado' });
+      client.disconnect(true);
+      return;
+    }
+    if (typeof payload?.quizId !== 'string' || !isUUID(payload.quizId)) {
+      return { success: false, message: 'quizId debe ser un UUID válido' };
+    }
+    await this.quizzes.findOne(client.data.user.userId, payload.quizId);
+    const session = this.gameSessionService.createSession(
+      payload.quizId,
+      client.id,
+    );
+    return { success: true, pin: session.pin, quizId: session.quizId };
   }
 
   @SubscribeMessage(SOCKET_EVENTS.SUBMIT_ANSWER)

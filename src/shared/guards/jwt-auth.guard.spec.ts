@@ -65,12 +65,24 @@ describe('JwtAuthGuard', () => {
     },
   );
 
+  it('rejects a validly signed token issued for another audience', () => {
+    const token = jwt.sign({ sub: randomUUID() }, secret, {
+      expiresIn: '1h',
+      audience: 'another-service',
+    });
+    expect(() =>
+      new JwtAuthGuard(reflector).canActivate(
+        context(`Bearer ${token}`).execution,
+      ),
+    ).toThrow(UnauthorizedException);
+  });
+
   it('normalizes userId after payload fields, using only the verified sub', () => {
     const sub = randomUUID();
     const token = jwt.sign(
       { sub, userId: randomUUID(), username: 'creator', role: 'ESTUDIANTE' },
       secret,
-      { expiresIn: '1h' },
+      { expiresIn: '1h', audience: 'kahoot-api' },
     );
     const { request, execution } = context(`Bearer ${token}`);
     expect(new JwtAuthGuard(reflector).canActivate(execution)).toBe(true);

@@ -1,11 +1,11 @@
 import type { Quiz } from '../entities/quiz.entity';
 import type { Question } from '../entities/question.entity';
-import { APP_CONFIG } from '../../../shared/utils/constants';
 
 export function serializeQuiz(quiz: Quiz) {
   return {
     id: quiz.id,
     authorId: quiz.authorId,
+    isDemo: quiz.isDemo,
     title: quiz.title,
     description: quiz.description ?? null,
     coverImageUrl: quiz.coverImageUrl ?? null,
@@ -28,9 +28,11 @@ export function serializeQuestion(question: Question) {
         text: option.text,
         isCorrect: option.isCorrect,
       })),
-    imageUrl: question.imageStorageKey
-      ? `/${APP_CONFIG.GLOBAL_PREFIX}/quizzes/${question.quizId}/questions/${question.id}/image`
-      : null,
+    imageUrl:
+      question.imageUrl ??
+      (question.imageStorageKey
+        ? `/uploads/questions/${question.imageStorageKey}`
+        : null),
   };
 }
 

@@ -77,6 +77,51 @@ describe('Private quiz authoring', () => {
     expect(foreign.body.error).toEqual(missing.body.error);
   });
 
+  it('shows the read-only demo quiz to every account and rejects mutations', async () => {
+    const demo = await harness.dataSource.getRepository(Quiz).save({
+      authorId: harness.userA,
+      title: 'Demo compartido',
+      isDemo: true,
+    });
+    const response = await http()
+      .get(root)
+      .auth(harness.tokenB, { type: 'bearer' })
+      .expect(200);
+    expect(response.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: demo.id,
+          isDemo: true,
+          title: 'Demo compartido',
+        }),
+      ]),
+    );
+    await http()
+      .get(`${root}/${demo.id}`)
+      .auth(harness.tokenB, { type: 'bearer' })
+      .expect(200);
+    await http()
+      .patch(`${root}/${demo.id}`)
+      .auth(harness.tokenA, { type: 'bearer' })
+      .send({ title: 'Mutado' })
+      .expect(403);
+    await http()
+      .delete(`${root}/${demo.id}`)
+      .auth(harness.tokenA, { type: 'bearer' })
+      .expect(403);
+    await http()
+      .post(`${root}/${demo.id}/questions`)
+      .auth(harness.tokenA, { type: 'bearer' })
+      .send({
+        questionText: 'Nueva',
+        options: ['A', 'B', 'C', 'D'].map((text, position) => ({
+          text,
+          isCorrect: position === 0,
+        })),
+      })
+      .expect(403);
+  });
+
   it('includes persisted questions and their ordered options in the detail', async () => {
     const quiz = await createQuiz();
     await harness.dataSource.transaction(async (manager) => {
@@ -196,6 +241,7 @@ describe('Private quiz authoring', () => {
         quizId: quiz.id,
         questionText: 'Imagen',
         imageStorageKey: 'test-cascade.png',
+        imageUrl: '/uploads/questions/test-cascade.png',
         imageMimeType: 'image/png',
         imageSize: 12,
       });

@@ -104,7 +104,7 @@ Todas las rutas de la tabla llevan el prefijo `/kahoot-api` en el servidor:
 | GET | `/quizzes/:quizId/questions/:questionId/image` | `200` binario |
 | DELETE | `/quizzes/:quizId/questions/:questionId/image` | `204` sin cuerpo |
 
-`QuizSummary` contiene `id`, `authorId`, título, descripción/portada anulables y fechas ISO. `QuizDetail` añade `questions`. `QuestionResource` contiene `id`, `quizId`, enunciado, tiempo, puntos, opciones `{ id, text, isCorrect }` en orden e `imageUrl` anulable. `imageUrl` es una ruta relativa al origen de API que incluye el prefijo y apunta al endpoint privado; no contiene token, nombre de disco o ruta física. Los metadatos internos de almacenamiento no se serializan.
+`QuizSummary` contiene `id`, `authorId`, `isDemo`, título, descripción/portada anulables y fechas ISO. `QuizDetail` añade `questions`. `QuestionResource` contiene `id`, `quizId`, enunciado, tiempo, puntos, opciones `{ id, text, isCorrect }` en orden e `imageUrl` anulable. `imageUrl` es una ruta pública relativa al origen (`/uploads/questions/<filename>`) persistida en PostgreSQL. Los metadatos internos de almacenamiento no se serializan.
 
 Creaciones y PATCH retornan recursos directos, sin el wrapper simulado `{ message, data }`. Edición de opciones sustituye el conjunto y genera nuevos UUID de opciones: no hay API de edición individual de una opción. Esto no integra partidas existentes ni preserva referencias de opciones de sesiones activas.
 
@@ -114,9 +114,9 @@ Aplicar validación estricta al módulo de autoría con `whitelist` y `forbidNon
 
 **Alternativas descartadas:** PUT para reemplazar todo el cuestionario obliga a reenviar preguntas y portada; operaciones CRUD anidadas independientes reducen pérdida de datos y permiten reintentos específicos.
 
-### 5. Archivos locales privados con asociación transaccional y limpieza persistente
+### 5. Archivos públicos locales con asociación transaccional y limpieza persistente
 
-Usar `UPLOADS_DEST` con límite `MAX_FILE_SIZE` de 5 MiB por defecto, conservando el volumen existente. Aunque la carpeta actual se llame `public/uploads`, no se expone mediante `ServeStaticModule`, Express static ni proxy público. Cada archivo usa una clave UUID interna y extensión derivada de su formato validado, nunca el nombre original.
+Usar `UPLOADS_DEST` con límite `MAX_FILE_SIZE` de 5 MiB por defecto y el volumen de Compose. Servir `/uploads/questions/` públicamente desde el volumen. Los uploads usan una clave UUID; las imágenes seed usan `q1.png`–`q10.png`; nunca usar el nombre original del cliente.
 
 Usar multipart de Nest/Express con límite de un archivo y tamaño aplicado durante la recepción. Verificar autenticación y propiedad antes de aceptar el flujo de archivo, y volver a comprobar bajo bloqueo antes del commit. Validar firma y decodificación real JPEG/PNG/WebP con `sharp`, con límite de 25 megapíxeles para contener imágenes comprimidas abusivas. Rechazar SVG, dimensiones excesivas y cualquier tipo inconsistente con `415`; ni extensión ni MIME del cliente bastan. No forzar `Content-Type: application/json` en esa solicitud.
 
@@ -131,9 +131,9 @@ Eliminación de imagen o pregunta/quiz: en la misma transacción, encolar todas 
 
 Un trabajador local de ciclo de vida Nest procesa trabajos con exclusión por fila, borrado idempotente y backoff; la ausencia del archivo cuenta como éxito. Antes de eliminar comprueba que la clave no esté referenciada por una pregunta. No usar Redis. Un barrido de temporales/archivos no referenciados con antigüedad superior a 24 horas recupera residuos de un cierre abrupto entre escritura y transacción; no toca archivos recientes ni activos. La limpieza conserva sus trabajos entre reinicios.
 
-La lectura abre y transmite el archivo autorizado sin revelar claves internas, con MIME verificado, `Cache-Control: private, no-store` y `X-Content-Type-Options: nosniff`. Coordinar apertura con el bloqueo de mutaciones para evitar que un reemplazo borre el archivo antes de abrirlo; una lectura ya abierta puede terminar normalmente. Si falta físicamente un archivo, responder `404` y registrar el incidente sin filtrar su ubicación.
+La ruta pública estática no requiere token; `GET /quizzes/:quizId/questions/:questionId/image` queda como compatibilidad autenticada. Si falta físicamente un archivo, responder `404` sin filtrar su ubicación.
 
-**Alternativas descartadas:** URL pública o token en query no preservan privacidad; guardar binarios en PostgreSQL simplifica atomicidad pero desaprovecha el volumen existente y aumenta la base; object storage y URLs firmadas se reservan para un despliegue con varias instancias.
+**Alternativas descartadas:** URLs firmadas añaden complejidad innecesaria para assets declarados públicos; guardar binarios en PostgreSQL desaprovecha el volumen existente y aumenta la base.
 
 ### 6. React por funcionalidades, sesión en memoria y operaciones por etapas
 

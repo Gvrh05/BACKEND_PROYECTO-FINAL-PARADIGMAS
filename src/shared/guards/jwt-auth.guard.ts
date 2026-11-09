@@ -17,6 +17,7 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   private readonly secret: string;
+  private readonly audience: string;
 
   constructor(private readonly reflector: Reflector) {
     const secret = process.env.JWT_SECRET;
@@ -26,6 +27,7 @@ export class JwtAuthGuard implements CanActivate {
       );
     }
     this.secret = secret;
+    this.audience = process.env.JWT_AUDIENCE?.trim() || 'kahoot-api';
   }
 
   canActivate(context: ExecutionContext): boolean {
@@ -53,7 +55,10 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const payload = jwt.verify(token, this.secret, { algorithms: ['HS256'] });
+      const payload = jwt.verify(token, this.secret, {
+        algorithms: ['HS256'],
+        audience: this.audience,
+      });
       if (
         typeof payload === 'string' ||
         typeof payload.sub !== 'string' ||

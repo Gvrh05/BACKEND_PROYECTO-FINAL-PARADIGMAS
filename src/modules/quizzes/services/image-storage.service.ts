@@ -25,7 +25,10 @@ export type ValidatedQuestionImage = Express.Multer.File & {
 
 @Injectable()
 export class ImageStorage implements OnModuleInit {
-  readonly root = resolve(process.env.UPLOADS_DEST || './public/uploads');
+  readonly root = join(
+    resolve(process.env.UPLOADS_DEST || './uploads'),
+    'questions',
+  );
   readonly staging = join(this.root, '.staging');
   readonly maxFileSize = Number(process.env.MAX_FILE_SIZE ?? 5242880);
   private readonly logger = new Logger(ImageStorage.name);
@@ -45,11 +48,12 @@ export class ImageStorage implements OnModuleInit {
   }
 
   pathForKey(key: string): string {
-    if (
-      !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}\.(jpg|png|webp)$/i.test(
+    const userUpload =
+      /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}\.(jpg|png|webp)$/i.test(
         key,
-      )
-    ) {
+      );
+    const seedImage = /^q(?:[1-9]|10)\.png$/.test(key);
+    if (!userUpload && !seedImage) {
       throw new Error('Clave de almacenamiento inválida');
     }
     return join(this.root, key);
@@ -155,6 +159,7 @@ export class ImageStorage implements OnModuleInit {
   }
 
   async discard(key: string): Promise<void> {
+    if (/^q(?:[1-9]|10)\.png$/.test(key)) return;
     try {
       await unlink(this.pathForKey(key));
     } catch (error) {

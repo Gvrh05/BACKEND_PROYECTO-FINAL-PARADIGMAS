@@ -9,18 +9,18 @@ El módulo actual de cuestionarios devuelve datos de ejemplo, no persiste cambio
 - Completar el CRUD persistente de cuestionarios y preguntas, limitado al propietario identificado por el JWT del servicio de autenticación existente.
 - Adoptar la aclaración del usuario: cada pregunta tiene enunciado de texto plano y cuatro opciones de texto, exactamente una con `isCorrect: true` y tres con `isCorrect: false`. No se introduce un campo de respuesta global Verdadero/Falso.
 - **BREAKING**: validar estrictamente esa cardinalidad en `options`, sustituir las respuestas simuladas por recursos persistidos y restringir consultas/modificaciones al propietario. Se conservan los nombres de campos y las rutas existentes cuando corresponda.
-- Permitir agregar, consultar, reemplazar y quitar una imagen opcional de cada pregunta mediante carga de archivo validada y acceso autenticado.
-- Construir listado, formulario de cuestionario y editor de preguntas en el frontend React existente, con validación, confirmaciones, estados de carga/error y diseño adaptable.
-- Conectar una pantalla mínima de acceso con el `POST /auth/login` existente para obtener el JWT; no construir otro backend de identidad.
-- Añadir migraciones PostgreSQL, pruebas automatizadas, contrato OpenAPI e instrucciones de ejecución conjunta.
+- Permitir agregar, reemplazar y quitar imágenes de pregunta validadas (JPEG/PNG/WebP, 5 MiB) con URL relativa pública persistida.
+- Hacer visible el quiz demo de diez preguntas para todas las cuentas y protegerlo como solo lectura en API e interfaz.
+- Construir landing, login por username/contraseña y dashboard React con Quices, Crear partida y Resultados.
+- Añadir migraciones PostgreSQL, seed idempotente, Auth/API con bases separadas, contenedores, Compose, pruebas automatizadas, OpenAPI e instrucciones de ejecución conjunta.
 
 ## Capabilities
 
 ### New Capabilities
 
 - `quiz-authoring`: CRUD persistente de cuestionarios propios y preguntas de cuatro opciones con una única correcta; validación y aislamiento entre usuarios.
-- `question-images`: asociación opcional de archivos de imagen a preguntas, validación de carga, lectura privada, sustitución y eliminación.
-- `quiz-authoring-ui`: experiencia React autenticada para administrar cuestionarios, preguntas y sus imágenes usando la API real.
+- `question-images`: asociación opcional, URL pública persistida, validación de carga, sustitución y eliminación.
+- `quiz-authoring-ui`: experiencia React con landing, dashboard y flujos autenticados de quizzes, salas y resultados.
 
 ### Modified Capabilities
 

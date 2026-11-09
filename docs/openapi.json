@@ -148,6 +148,7 @@
         "required": [
           "id",
           "authorId",
+          "isDemo",
           "title",
           "description",
           "coverImageUrl",
@@ -157,6 +158,11 @@
         "properties": {
           "id": { "type": "string", "format": "uuid", "readOnly": true },
           "authorId": { "type": "string", "format": "uuid", "readOnly": true },
+          "isDemo": {
+            "type": "boolean",
+            "readOnly": true,
+            "description": "Los cuestionarios demo son visibles para todas las cuentas y de solo lectura."
+          },
           "title": { "type": "string", "minLength": 1, "maxLength": 150 },
           "description": {
             "type": "string",
@@ -248,7 +254,8 @@
             "type": "string",
             "nullable": true,
             "readOnly": true,
-            "description": "Ruta privada relativa al origen de API; requiere Bearer, nunca incluye token"
+            "description": "Ruta pública relativa al origen, por ejemplo /uploads/questions/q1.png",
+            "example": "/uploads/questions/q1.png"
           }
         }
       }
@@ -514,9 +521,41 @@
         { "$ref": "#/components/parameters/QuestionId" }
       ],
       "put": {
-        "summary": "Adjuntar o sustituir una imagen privada",
+        "summary": "Adjuntar o sustituir una imagen de acceso público",
         "tags": ["Question Images"],
-        "description": "Un único archivo JPEG, PNG o WebP en image, sin campos adicionales. 5 MiB por defecto (MAX_FILE_SIZE), hasta 25 megapíxeles. La firma y decodificación deben coincidir con el MIME declarado. La imagen anterior se conserva si falla la carga o el commit.",
+        "description": "Un único archivo JPEG, PNG o WebP en image, sin campos adicionales. Máximo 5 MiB por defecto (MAX_FILE_SIZE), hasta 25 megapíxeles. La firma y decodificación deben coincidir con el MIME declarado. La imagen anterior se conserva si falla la carga o el commit. La imagen resultante es pública en /uploads/questions/<filename>.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["image"],
+                "properties": {
+                  "image": { "type": "string", "format": "binary" }
+                }
+              },
+              "encoding": {
+                "image": { "contentType": "image/jpeg, image/png, image/webp" }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/QuestionResource" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "415": { "$ref": "#/components/responses/UnsupportedImage" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
+      },
+      "post": {
+        "summary": "Subir una imagen usando HTTP POST",
+        "tags": ["Question Images"],
+        "description": "Admite el mismo multipart y validaciones que PUT; devuelve la pregunta actualizada y una URL pública.",
         "requestBody": {
           "required": true,
           "content": {
@@ -546,12 +585,12 @@
         }
       },
       "get": {
-        "summary": "Leer el binario con token Bearer del propietario",
+        "summary": "Leer el binario mediante la ruta autenticada de compatibilidad",
         "tags": ["Question Images"],
-        "description": "Sin imagen responde 404. imageUrl incluye /kahoot-api y es relativa al origen, no a VITE_API_URL. No hay ruta estática pública ni token en query. El navegador debe descargar como blob autenticado.",
+        "description": "Esta ruta autenticada se conserva por compatibilidad. imageUrl apunta a /uploads/questions/<filename>, una ruta estática pública sin autenticación.",
         "responses": {
           "200": {
-            "description": "Binario privado",
+            "description": "Binario autenticado de compatibilidad",
             "headers": {
               "Cache-Control": {
                 "schema": { "type": "string", "example": "private, no-store" }
@@ -614,6 +653,48 @@
           "200": {
             "description": "Resultados de la sesión"
           }
+        }
+      }
+    },
+    "/uploads/questions/{filename}": {
+      "servers": [
+        {
+          "url": "http://localhost:3000",
+          "description": "Origen del servidor de archivos estáticos"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "filename",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^(q([1-9]|10)\\.png|[0-9a-fA-F-]{36}\\.(jpg|png|webp))$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Leer públicamente una imagen seed o subida",
+        "description": "Las imágenes son públicas intencionalmente y no requieren Bearer. Los PNG q1.png–q10.png son assets seed y los uploads usan nombres UUID.",
+        "security": [],
+        "tags": ["Question Images"],
+        "responses": {
+          "200": {
+            "description": "Imagen PNG/JPEG/WebP",
+            "content": {
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "404": { "description": "No existe la imagen" }
         }
       }
     }

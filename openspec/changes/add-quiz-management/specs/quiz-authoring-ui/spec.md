@@ -66,8 +66,8 @@ La interfaz SHALL permitir crear, consultar, editar y eliminar preguntas del cue
 - **WHEN** se abre una pregunta existente y se modifica solo su texto
 - **THEN** se conservan sus opciones, tiempo, puntos e imagen salvo modificación explícita
 
-### Requirement: Adjuntar y visualizar imágenes privadas
-La interfaz SHALL ofrecer selección opcional de JPEG, PNG o WebP, vista previa, reemplazo y eliminación de imagen. MUST consultar las imágenes guardadas con autenticación, no colocando el token en la URL; MUST mostrar errores de tipo o tamaño y liberar las vistas previas al descartarlas o cerrar sesión.
+### Requirement: Adjuntar y visualizar imágenes públicas
+La interfaz SHALL ofrecer selección opcional de JPEG, PNG o WebP de hasta 5 MiB, vista previa, reemplazo y eliminación. Las imágenes guardadas usan su `imageUrl` pública en `/uploads/questions/`; MUST liberar las vistas previas al descartarlas o cerrar sesión.
 
 #### Scenario: Vista previa y guardado
 - **WHEN** el usuario selecciona un archivo válido y guarda la pregunta
@@ -120,3 +120,18 @@ La interfaz SHALL funcionar desde 320 píxeles de ancho y en escritorio, con for
 #### Scenario: Teclado y texto literal
 - **WHEN** se completa el formulario por teclado y se consulta una pregunta que contiene etiquetas HTML en su texto
 - **THEN** se puede elegir la respuesta correcta y guardar con etiquetas accesibles, y el contenido se muestra literalmente sin ejecutarse
+
+### Requirement: Landing, login y dashboard
+La interfaz SHALL presentar un landing público, un login con username y contraseña (sin correo) y, tras autenticar, un dashboard adaptable con sidebar de **Quices**, **Crear partida** y **Resultados**. Quices MUST listar recursos propios y el quiz demo compartido. El demo MUST permitir consulta pero MUST NOT permitir edición, borrado ni modificación de preguntas.
+
+#### Scenario: Sesión autenticada
+- **WHEN** el usuario entra al dashboard
+- **THEN** puede navegar entre las tres secciones sin perder la sesión en memoria
+
+#### Scenario: Quiz demo
+- **WHEN** cualquier cuenta lista sus quizzes y abre el demo
+- **THEN** siempre lo ve en modo solo lectura y la API rechaza mutaciones
+
+#### Scenario: Crear partida y consultar resultados
+- **WHEN** el anfitrión elige un quiz permitido en Crear partida
+- **THEN** la sala devuelve un PIN; Resultados permite consultar por PIN los resultados disponibles

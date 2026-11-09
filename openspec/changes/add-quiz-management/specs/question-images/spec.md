@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Permitir adjuntar una imagen opcional a cada pregunta, manteniendo la privacidad del propietario y evitando asociaciones rotas cuando una carga o sustitución falla.
+Permitir adjuntar una imagen opcional a cada pregunta y servirla públicamente desde una ruta relativa persistida, evitando asociaciones rotas cuando una carga o sustitución falla.
 
 ## ADDED Requirements
 
 ### Requirement: Asociar una imagen opcional
-El sistema SHALL permitir al propietario agregar o reemplazar una única imagen por pregunta mediante `PUT /quizzes/:quizId/questions/:questionId/image` con `multipart/form-data` y un archivo `image`. La respuesta MUST ser `200` con la pregunta actualizada y un `imageUrl` de lectura autenticada; sin imagen MUST devolver `imageUrl: null`.
+El sistema SHALL permitir al propietario agregar o reemplazar una única imagen por pregunta mediante `POST` o `PUT /quizzes/:quizId/questions/:questionId/image` con `multipart/form-data` y un archivo `image`. La respuesta MUST ser `200` con la pregunta actualizada y la ruta pública persistida `/uploads/questions/<filename>` como `imageUrl`; sin imagen MUST devolver `imageUrl: null`.
 
 #### Scenario: Agregar primera imagen
 - **WHEN** el propietario carga un archivo válido para una pregunta sin imagen
@@ -44,24 +44,16 @@ El sistema SHALL aceptar únicamente JPEG, PNG y WebP con contenido compatible c
 - **WHEN** el nombre aportado por el cliente contiene rutas o secuencias de directorio padre
 - **THEN** ese nombre no permite escribir fuera del área de archivos configurada
 
-### Requirement: Lectura privada de imágenes
-El sistema SHALL entregar la imagen únicamente al propietario mediante `GET /quizzes/:quizId/questions/:questionId/image`, con tipo de contenido correcto y sin caché compartida. MUST exigir autenticación y comprobar pertenencia y propiedad igual que en las preguntas; los archivos MUST NOT quedar expuestos mediante una ruta estática pública alternativa.
+### Requirement: Lectura pública de imágenes
+El sistema SHALL servir imágenes de preguntas sin Bearer en `/uploads/questions/<filename>`. Los nombres de uploads MUST usar UUID; los assets demo MUST usar `q1.png`–`q10.png`. `imageUrl` MUST almacenarse en la base de datos junto con sus metadatos y coincidir con la ruta pública. La antigua ruta `GET /quizzes/:quizId/questions/:questionId/image` MAY mantenerse como compatibilidad autenticada.
 
-#### Scenario: Lectura por el propietario
-- **WHEN** el propietario solicita una imagen asociada con un token válido
-- **THEN** recibe `200` con el contenido binario y cabeceras que impiden el almacenamiento en caché compartida
+#### Scenario: Lectura pública
+- **WHEN** cualquier cliente solicita un `imageUrl` asociado
+- **THEN** recibe `200` con el contenido binario y su MIME sin necesitar token
 
-#### Scenario: Imagen ajena o ruta anidada incorrecta
-- **WHEN** otro usuario solicita la imagen o se usa un cuestionario que no contiene la pregunta
-- **THEN** recibe `404` sin bytes del archivo ni su ruta física
-
-#### Scenario: Lectura sin token
-- **WHEN** se solicita una imagen sin token válido
-- **THEN** la API responde `401` y no entrega su contenido
-
-#### Scenario: Imagen ausente o ruta estática alternativa
-- **WHEN** se consulta una pregunta sin imagen o se intenta acceder directamente a un archivo almacenado por una ruta pública
-- **THEN** no se entrega el archivo y la consulta privada sin imagen responde `404`
+#### Scenario: Imagen ausente
+- **WHEN** se solicita una ruta pública inexistente
+- **THEN** la API responde `404` sin revelar rutas físicas
 
 ### Requirement: Reemplazo sin pérdida de la imagen anterior
 El sistema SHALL confirmar una sustitución solo cuando el nuevo archivo y su asociación sean utilizables. Si la validación, el almacenamiento o la persistencia falla, MUST conservar la imagen anterior y no publicar una nueva asociación; las sustituciones concurrentes MUST dejar como máximo una imagen activa.
@@ -93,3 +85,10 @@ El sistema SHALL permitir quitar la imagen mediante `DELETE /quizzes/:quizId/que
 #### Scenario: Falla temporal de limpieza y reinicio
 - **WHEN** el sistema no puede borrar un archivo descartado y luego reinicia
 - **THEN** el archivo sigue sin ser accesible por la API y el trabajo de limpieza pendiente puede reintentarse sin perderse
+
+### Requirement: Persistir la ruta pública relativa
+Cada carga MUST actualizar en una transacción `imageUrl`, `imageStorageKey`, MIME y tamaño. Migraciones MUST convertir las asociaciones previas a `/uploads/questions/<key>`. Quitar o sustituir una imagen MUST limpiar `imageUrl` en la misma transacción que desasocia la clave.
+
+#### Scenario: Persistir y quitar la ruta pública
+- **WHEN** se carga, migra o elimina una imagen asociada
+- **THEN** la base conserva una ruta pública consistente con la clave o limpia la ruta al desasociar

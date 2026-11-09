@@ -63,11 +63,13 @@ describe('Private question images', () => {
     ] as const) {
       const { question, path } = await resources();
       const { body } = await http()
-        .put(path)
+        .post(path)
         .auth(harness.tokenA, { type: 'bearer' })
         .attach('image', bytes, { filename, contentType: mime })
         .expect(200);
-      expect(body.imageUrl).toBe(path);
+      expect(body.imageUrl).toMatch(
+        /^\/uploads\/questions\/[\da-f-]{36}\.(jpg|png|webp)$/i,
+      );
       const stored = await harness.dataSource
         .getRepository(Question)
         .findOneByOrFail({ id: question.id });
@@ -277,7 +279,7 @@ describe('Private question images', () => {
     expect(await readdir(storage.staging)).toEqual([]);
   });
 
-  it('streams exact bytes privately with no-store and nosniff and no static alternative', async () => {
+  it('keeps the owner endpoint protected and also serves uploaded files publicly', async () => {
     const { question, path } = await resources();
     await http().get(path).auth(harness.tokenA, { type: 'bearer' }).expect(404);
     await http()
@@ -312,15 +314,26 @@ describe('Private question images', () => {
     const stored = await harness.dataSource
       .getRepository(Question)
       .findOneByOrFail({ id: question.id });
+    const publicPath = `/uploads/questions/${stored.imageStorageKey}`;
+    const publicImage = await http()
+      .get(publicPath)
+      .expect(200)
+      .expect('Content-Type', 'image/png');
+    expect(publicImage.body).toEqual(png);
+    expect(publicPath).toBe(
+      (
+        await http()
+          .get(`${root}/${question.quizId}/questions/${question.id}`)
+          .auth(harness.tokenA, { type: 'bearer' })
+          .expect(200)
+      ).body.imageUrl,
+    );
     for (const route of [
-      `/uploads/${stored.imageStorageKey}`,
       `/public/uploads/${stored.imageStorageKey}`,
+      `/uploads/${stored.imageStorageKey}`,
       `/kahoot-api/uploads/${stored.imageStorageKey}`,
     ]) {
-      await http()
-        .get(route)
-        .auth(harness.tokenA, { type: 'bearer' })
-        .expect(404);
+      await http().get(route).expect(404);
     }
     await storage.discard(stored.imageStorageKey!);
     const missing = await http()
@@ -328,6 +341,7 @@ describe('Private question images', () => {
       .auth(harness.tokenA, { type: 'bearer' })
       .expect(404);
     expect(JSON.stringify(missing.body)).not.toContain(storage.root);
+    await http().get(publicPath).expect(404);
   });
 
   it('removes only an image idempotently and revokes access before disk cleanup', async () => {

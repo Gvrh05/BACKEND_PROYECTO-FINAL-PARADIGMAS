@@ -1,49 +1,136 @@
-version: '3.8'
-
 services:
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: production
-    container_name: profelink-kahoot-api
-    restart: unless-stopped
-    ports:
-      - "${PORT:-3000}:3000"
-    environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-kahoot_db}?schema=public
-      - JWT_SECRET=${JWT_SECRET:?Configura el secreto compartido del servicio de identidad}
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:5173}
-      - UPLOADS_DEST=/usr/src/app/public/uploads
-      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-5242880}
-    volumes:
-      - uploads_data:/usr/src/app/public/uploads
-    depends_on:
-      postgres:
-        condition: service_healthy
-
   postgres:
     image: postgres:16-alpine
-    container_name: profelink-kahoot-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-kahoot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-kahoot_db}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-kahoot_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-kahoot} -d ${POSTGRES_DB:-kahoot_db}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  auth-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${AUTH_POSTGRES_USER:-auth}
+      POSTGRES_PASSWORD: ${AUTH_POSTGRES_PASSWORD:?Set AUTH_POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${AUTH_POSTGRES_DB:-auth_db}
+    ports:
+      - "${AUTH_POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - auth_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${AUTH_POSTGRES_USER:-auth} -d ${AUTH_POSTGRES_DB:-auth_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth:
+    build:
+      context: ../auth
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DB_HOST: auth-db
+      DB_PORT: 5432
+      DB_USER: ${AUTH_POSTGRES_USER:-auth}
+      DB_PASSWORD: ${AUTH_POSTGRES_PASSWORD:?Set AUTH_POSTGRES_PASSWORD in .env}
+      DB_NAME: ${AUTH_POSTGRES_DB:-auth_db}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-kahoot-api}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+    ports:
+      - "${AUTH_PORT:-3001}:3001"
+    depends_on:
+      auth-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/auth/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kahoot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kahoot_db}?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-kahoot-api}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      UPLOADS_DEST: /app/uploads
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-5242880}
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - uploads_data:/app/uploads
+      - ./public/seeds:/app/public/seeds:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/kahoot-api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  quiz-seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    restart: "no"
+    command: ["node", "dist/seeds/quiz-demo.seed.js"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kahoot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kahoot_db}?schema=public
+      AUTH_SERVICE_URL: http://auth:3001/auth
+      DEMO_USER_USERNAME: ${DEMO_USER_USERNAME:-profesor_test}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:?Set DEMO_USER_PASSWORD in .env}
+      UPLOADS_DEST: /app/uploads
+      SEED_IMAGES_DIR: /app/public/seeds
+      MAX_FILE_SIZE: ${MAX_FILE_SIZE:-5242880}
+    volumes:
+      - uploads_data:/app/uploads
+      - ./public/seeds:/app/public/seeds:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ../kahoot-web/profe-link-kahoot_game
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/kahoot-api}
+        VITE_AUTH_API_URL: ${VITE_AUTH_API_URL:-http://localhost:3001/auth}
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+      auth:
+        condition: service_healthy
 
 volumes:
   postgres_data:
-    driver: local
+  auth_postgres_data:
   uploads_data:
-    driver: local

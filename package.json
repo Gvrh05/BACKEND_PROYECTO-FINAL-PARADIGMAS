@@ -25,7 +25,8 @@
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/shared/database/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/shared/database/data-source.ts",
     "migration:run:prod": "typeorm migration:run -d dist/shared/database/data-source.js",
-    "migration:show:prod": "typeorm migration:show -d dist/shared/database/data-source.js"
+    "migration:show:prod": "typeorm migration:show -d dist/shared/database/data-source.js",
+    "seed:demo": "node dist/seeds/quiz-demo.seed.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -37,6 +38,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "dotenv": "^18.0.10",
+    "express": "^5.3.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.5.0",
     "pg": "^8.23.1",

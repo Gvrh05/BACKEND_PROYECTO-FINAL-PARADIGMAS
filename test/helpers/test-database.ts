@@ -7,6 +7,8 @@ import { QuestionOption } from '../../src/modules/quizzes/entities/question-opti
 import { FileCleanupJob } from '../../src/modules/quizzes/entities/file-cleanup-job.entity';
 import { InitialQuizAuthoring1794000000000 } from '../../src/shared/database/migrations/1794000000000-InitialQuizAuthoring';
 import { QuizIntegrity1794000000001 } from '../../src/shared/database/migrations/1794000000001-QuizIntegrity';
+import { DemoQuiz1794000000002 } from '../../src/shared/database/migrations/1794000000002-DemoQuiz';
+import { PublicQuestionImageUrl1794000000003 } from '../../src/shared/database/migrations/1794000000003-PublicQuestionImageUrl';
 
 export async function createTestDatabase() {
   if (!process.env.TEST_DATABASE_URL) {
@@ -24,7 +26,12 @@ export async function createTestDatabase() {
   const dataSource = new DataSource({
     ...options,
     entities: [Quiz, Question, QuestionOption, FileCleanupJob],
-    migrations: [InitialQuizAuthoring1794000000000, QuizIntegrity1794000000001],
+    migrations: [
+      InitialQuizAuthoring1794000000000,
+      QuizIntegrity1794000000001,
+      DemoQuiz1794000000002,
+      PublicQuestionImageUrl1794000000003,
+    ],
   });
   await dataSource.initialize();
   try {

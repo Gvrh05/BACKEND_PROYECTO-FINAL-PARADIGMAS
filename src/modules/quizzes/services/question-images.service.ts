@@ -44,6 +44,7 @@ export class QuestionImagesService {
           newKey = await this.storage.promote(file.path, file.detectedMimeType);
           await manager.update(Question, questionId, {
             imageStorageKey: newKey,
+            imageUrl: `/uploads/questions/${newKey}`,
             imageMimeType: file.detectedMimeType,
             imageSize: file.size,
             updatedAt: new Date(),
@@ -135,6 +136,7 @@ export class QuestionImagesService {
       await enqueueCleanup(manager, [question.imageStorageKey]);
       await manager.update(Question, questionId, {
         imageStorageKey: null,
+        imageUrl: null,
         imageMimeType: null,
         imageSize: null,
         updatedAt: new Date(),

@@ -14,6 +14,7 @@ describe('Authoring resource serialization', () => {
     id: randomUUID(),
     authorId: randomUUID(),
     title: 'Quiz',
+    isDemo: false,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     updatedAt: new Date('2026-01-02T00:00:00Z'),
   });
@@ -23,7 +24,8 @@ describe('Authoring resource serialization', () => {
     questionText: 'Q',
     timeLimitSeconds: 20,
     points: 1000,
-    imageStorageKey: 'private-disk-key.png',
+    imageStorageKey: '4c56df62-1e62-4597-a27d-e7888057c4ee.png',
+    imageUrl: '/uploads/questions/4c56df62-1e62-4597-a27d-e7888057c4ee.png',
     imageMimeType: 'image/png',
     imageSize: 123,
     options: [3, 1, 0, 2].map((position) =>
@@ -54,10 +56,9 @@ describe('Authoring resource serialization', () => {
       '3',
     ]);
     expect(result.imageUrl).toBe(
-      `/kahoot-api/quizzes/${quiz.id}/questions/${question.id}/image`,
+      '/uploads/questions/4c56df62-1e62-4597-a27d-e7888057c4ee.png',
     );
     for (const privateValue of [
-      'private-disk-key',
       'imageStorageKey',
       'imageMimeType',
       'imageSize',
@@ -70,7 +71,8 @@ describe('Authoring resource serialization', () => {
   });
   it('returns null for no image and composes a quiz detail', () => {
     expect(
-      serializeQuestion({ ...question, imageStorageKey: null }).imageUrl,
+      serializeQuestion({ ...question, imageStorageKey: null, imageUrl: null })
+        .imageUrl,
     ).toBeNull();
     expect(serializeQuizDetail(quiz, [question]).questions).toHaveLength(1);
   });

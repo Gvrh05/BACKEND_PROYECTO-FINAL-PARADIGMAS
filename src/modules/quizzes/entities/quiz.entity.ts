@@ -28,6 +28,9 @@ export class Quiz {
   @Column({ name: 'cover_image_url', type: 'text', nullable: true })
   coverImageUrl: string | null;
 
+  @Column({ name: 'is_demo', type: 'boolean', default: false })
+  isDemo: boolean;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

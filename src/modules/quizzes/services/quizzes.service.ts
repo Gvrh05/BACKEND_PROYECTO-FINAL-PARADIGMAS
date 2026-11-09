@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { EntityManager } from 'typeorm';
 import { CreateQuizDto } from '../dto/create-quiz.dto';
@@ -24,7 +28,7 @@ export class QuizzesService {
 
   async findAll(userId: string) {
     const quizzes = await this.dataSource.getRepository(Quiz).find({
-      where: { authorId: userId },
+      where: [{ authorId: userId }, { isDemo: true }],
       order: { createdAt: 'DESC', id: 'DESC' },
     });
     return quizzes.map(serializeQuiz);
@@ -32,7 +36,10 @@ export class QuizzesService {
 
   async findOne(userId: string, id: string) {
     const quiz = await this.dataSource.getRepository(Quiz).findOne({
-      where: { id, authorId: userId },
+      where: [
+        { id, authorId: userId },
+        { id, isDemo: true },
+      ],
       relations: { questions: { options: true } },
       order: {
         questions: {
@@ -57,6 +64,9 @@ export class QuizzesService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!quiz) throw new NotFoundException('Cuestionario no encontrado');
+      if (quiz.isDemo) {
+        throw new ForbiddenException('El cuestionario demo es de solo lectura');
+      }
       return work(manager, quiz);
     });
   }

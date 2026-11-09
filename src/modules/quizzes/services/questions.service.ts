@@ -25,7 +25,10 @@ export class QuestionsService {
     manager = this.dataSource.manager,
   ): Promise<Question> {
     const question = await manager.getRepository(Question).findOne({
-      where: { id, quizId, quiz: { authorId: userId } },
+      where: [
+        { id, quizId, quiz: { authorId: userId } },
+        { id, quizId, quiz: { isDemo: true } },
+      ],
       relations: { options: true },
     });
     if (!question) throw new NotFoundException('Pregunta no encontrada');
@@ -33,15 +36,18 @@ export class QuestionsService {
   }
 
   async findAll(userId: string, quizId: string) {
+    const quizzes = this.dataSource.getRepository(Quiz);
     if (
-      !(await this.dataSource
-        .getRepository(Quiz)
-        .existsBy({ id: quizId, authorId: userId }))
+      !(await quizzes.existsBy({ id: quizId, authorId: userId })) &&
+      !(await quizzes.existsBy({ id: quizId, isDemo: true }))
     ) {
       throw new NotFoundException('Cuestionario no encontrado');
     }
     const questions = await this.dataSource.getRepository(Question).find({
-      where: { quizId, quiz: { authorId: userId } },
+      where: [
+        { quizId, quiz: { authorId: userId } },
+        { quizId, quiz: { isDemo: true } },
+      ],
       relations: { options: true },
       order: { createdAt: 'ASC', id: 'ASC' },
     });

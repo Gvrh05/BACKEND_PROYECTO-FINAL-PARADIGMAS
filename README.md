@@ -47,11 +47,10 @@ antes de iniciar la aplicación. La imagen usa pnpm y el único lockfile existen
 no requiere `package-lock.json`, código TypeScript ni dependencias de desarrollo
 para ejecutar las migraciones compiladas.
 
-El volumen `uploads_data` persiste en `/usr/src/app/public/uploads`; no lo borres
-al actualizar o revertir la aplicación. Aunque se llame `public`, sus archivos no
-se sirven por una ruta estática pública. El despliegue previsto usa una instancia
-de API con ese volumen. `UPLOADS_DEST` y `MAX_FILE_SIZE` configuran ubicación y
-límite de carga (5 MiB por defecto).
+El volumen `uploads_data` persiste en `/app/uploads`; no lo borres al actualizar
+o revertir la aplicación. Las imágenes de preguntas se publican intencionalmente
+en `/uploads/questions/<filename>`. `UPLOADS_DEST` y `MAX_FILE_SIZE` configuran la
+ubicación y el límite de carga (5 MiB por defecto).
 
 Si otro proyecto ocupa 3000 o 5432, configura `PORT` y `POSTGRES_PORT` distintos.
 El `DATABASE_URL` local debe usar el puerto publicado, mientras Compose conecta
@@ -69,12 +68,12 @@ Pruebas, aislamiento de esquemas y JWT de prueba: [docs/testing.md](docs/testing
 Contrato: [docs/openapi.json](docs/openapi.json). Todas las rutas siguientes llevan
 el prefijo `/kahoot-api` y requieren Bearer:
 
-| Recurso | Operaciones |
-| --- | --- |
-| `/quizzes` | POST crear (201), GET listar propios (200) |
-| `/quizzes/:quizId` | GET detalle (200), PATCH metadatos (200), DELETE cascada (204) |
-| `/quizzes/:quizId/questions` | POST crear pregunta (201), GET listar (200) |
-| `/quizzes/:quizId/questions/:questionId` | GET (200), PATCH (200), DELETE (204) |
+| Recurso                                  | Operaciones                                                    |
+| ---------------------------------------- | -------------------------------------------------------------- |
+| `/quizzes`                               | POST crear (201), GET listar propios y demo compartido (200)   |
+| `/quizzes/:quizId`                       | GET detalle (200), PATCH metadatos (200), DELETE cascada (204) |
+| `/quizzes/:quizId/questions`             | POST crear pregunta (201), GET listar (200)                    |
+| `/quizzes/:quizId/questions/:questionId` | GET (200), PATCH (200), DELETE (204)                           |
 
 Ejemplo PowerShell, usando un token emitido por el servicio de identidad:
 
@@ -100,14 +99,15 @@ demás. Borrar un quiz elimina sus preguntas y opciones, revoca las imágenes y
 deja sus archivos pendientes de limpieza persistente.
 
 **Cambios incompatibles respecto del stub anterior:** las respuestas son recursos
-directos (no `{ message, data }`), el listado solo incluye recursos propios, las
+directos (no `{ message, data }`), el listado incluye cuestionarios propios y el
+quiz demo compartido, las
 opciones deben cumplir la cardinalidad indicada y `imageUrl` es de solo lectura.
 No se aceptan `authorId`, `id`, fechas ni campos desconocidos en los cuerpos.
 `400` indica entrada inválida, `401` sesión inválida y `404` recurso inexistente,
 ajeno o pregunta fuera del cuestionario. El sobre de errores conserva
 `statusCode`, `timestamp`, `path` y `error` sin detalles SQL o rutas de archivos.
 
-## Imágenes privadas de preguntas
+## Imágenes públicas de preguntas
 
 `PUT/GET/DELETE /quizzes/:quizId/questions/:questionId/image` reciben/devuelven
 una única imagen opcional por pregunta. La carga usa multipart con un archivo
@@ -127,17 +127,39 @@ curl.exe -X DELETE "$image" -H "Authorization: Bearer $token"
 
 No fuerces `Content-Type: application/json` ni un boundary manual al enviar
 `FormData`; el cliente genera el multipart. PUT devuelve `200` con la pregunta
-actualizada, GET devuelve el binario y DELETE devuelve `204` incluso si ya no
-había imagen. `imageUrl` es `null` sin imagen o una ruta privada con prefijo
-`/kahoot-api`, relativa al **origen** de la API. Descárgala con Bearer como blob
-para mostrarla; no incluyas tokens en URLs. GET responde con `private, no-store`
-y `nosniff`; `413` indica exceso de bytes y `415` tipo/contenido/dimensiones
+actualizada, GET es una ruta de compatibilidad autenticada y DELETE devuelve `204`
+incluso si ya no había imagen. `imageUrl` es `null` sin imagen o una ruta pública
+como `/uploads/questions/<filename>`, relativa al **origen** de la API. Las seeds
+usan `q1.png`–`q10.png`; las cargas de usuarios usan nombres UUID. `413` indica
+exceso de bytes y `415` tipo/contenido/dimensiones
 inválidos. Un archivo inexistente o no autorizado no revela su ruta física.
 
 Guarda primero la pregunta JSON y luego su imagen. Si solo falla el archivo,
 reintenta PUT sobre el mismo UUID: no repitas POST de pregunta. Una sustitución
 fallida conserva la imagen previa. Los nombres originales nunca determinan
-rutas de disco, y el volumen **no debe publicarse** mediante proxy o static.
+rutas de disco. El endpoint de descarga autenticado se conserva por compatibilidad;
+la URL serializada es pública y no requiere Bearer.
+
+## Quiz demo y ejecución local con Compose
+
+Auth usa **usuario y contraseña**, sin correo. El seed crea (o valida) la cuenta
+`profesor_test` con `DEMO_USER_PASSWORD`. Coloca manualmente los PNG `q1.png` a
+`q10.png` en `public/seeds/`; no se generan automáticamente. `quiz-seed` los copia
+al volumen público y crea el quiz **Evaluación de Cultura General** con diez
+preguntas. El seed es idempotente.
+
+El quiz demo aparece junto con los quizzes propios de todas las cuentas y puede
+abrirse para ver sus preguntas, pero es de solo lectura: la API rechaza editarlo,
+borrarlo o agregarle contenido. No hace falta crear un correo ni registrar a mano
+la cuenta demo.
+
+1. Copia `.env.example` a `.env` y reemplaza las contraseñas/secreto de ejemplo.
+2. Añade manualmente `public/seeds/q1.png` … `q10.png`.
+3. Ejecuta `scripts/start.ps1` o `scripts/start.bat` en Windows.
+
+Compose inicia API, Auth, frontend, dos bases PostgreSQL separadas y el seed.
+Frontend: `http://localhost:5173`; API: `http://localhost:3000/kahoot-api`;
+Auth: `http://localhost:3001/auth`.
 
 ### Operación de limpieza
 
