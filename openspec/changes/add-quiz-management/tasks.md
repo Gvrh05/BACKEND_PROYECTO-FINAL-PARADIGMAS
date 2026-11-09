@@ -48,7 +48,7 @@ Los grupos 1–4 corresponden a `kahoot-api/`. Los grupos 5–7 corresponden a `
 - [x] 6.2 Implementar crear/editar cuestionario con validación, conservación de borrador y portada no modificada, y bloqueo de doble envío; verificar pruebas de título inválido, PATCH mínimo, falla de API y navegación al detalle tras crear.
 - [x] 6.3 Implementar formulario de pregunta con cuatro textos y selección exclusiva, respetando defaults y valores omitidos; verificar pruebas de cuatro opciones, cambio de correcta, campos vacíos y edición sin pérdida de tiempo/puntos/imagen.
 - [x] 6.4 Implementar consulta, edición y borrado de preguntas y cuestionarios con confirmación y manejo de `404`; verificar que cancelar no emite DELETE, falla conserva el elemento y éxito lo retira tras `204`.
-- [ ] 6.5 Aplicar estilos adaptables y semántica accesible, y documentar los flujos de autoría en README frontend; verificar a 320 px/escritorio, navegación por teclado, foco/etiquetas y texto con HTML mostrado literalmente.
+- [x] 6.5 Aplicar estilos adaptables y semántica accesible, y documentar los flujos de autoría en README frontend; verificar a 320 px/escritorio, navegación por teclado, foco/etiquetas y texto con HTML mostrado literalmente.
 
 ## 7. Web: imágenes y guardado por etapas
 
@@ -60,5 +60,5 @@ Los grupos 1–4 corresponden a `kahoot-api/`. Los grupos 5–7 corresponden a `
 ## 8. Verificación integrada de la entrega
 
 - [ ] 8.1 Ejecutar en sus respectivos repositorios suites de API y web, compilaciones y lint sin reescritura automática no revisada; verificar los resultados registrados y que las pruebas de humo anteriores no requieren abrir endpoints privados ni modificar identidad.
-- [ ] 8.2 Validar con PostgreSQL y servicio de autenticación reales el ciclo acceso → quiz → pregunta con cuatro opciones → imagen → edición → eliminación, repitiendo consulta tras reiniciar API y con otra cuenta; verificar persistencia, aislamiento y códigos previstos en OpenAPI.
-- [ ] 8.3 Ejecutar el procedimiento documentado de despliegue/migración y recuperación en entorno descartable, incluyendo fallo de limpieza y reinicio; verificar volumen persistente, procesamiento de pendientes y que el rollback de aplicación conserva tablas y archivos sin operaciones destructivas automáticas.
+- [x] 8.2 Validar con PostgreSQL y servicio de autenticación reales el ciclo acceso → quiz → pregunta con cuatro opciones → imagen → edición → eliminación, repitiendo consulta tras reiniciar API y con otra cuenta; verificar persistencia, aislamiento y códigos previstos en OpenAPI.
+- [x] 8.3 Ejecutar el procedimiento documentado de despliegue/migración y recuperación en entorno descartable, incluyendo fallo de limpieza y reinicio; verificar volumen persistente, procesamiento de pendientes y que el rollback de aplicación conserva tablas y archivos sin operaciones destructivas automáticas.
