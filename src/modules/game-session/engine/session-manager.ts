@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { GamePhase, GameStateDto } from '../dto/game-state.dto';
+import { GamePhase } from '../dto/game-state.dto';
 
 export interface ActiveSession {
   pin: string;
@@ -7,7 +7,10 @@ export interface ActiveSession {
   hostSocketId: string;
   phase: GamePhase;
   currentQuestionIndex: number;
-  players: Map<string, { id: string; name: string; score: number; socketId: string }>;
+  players: Map<
+    string,
+    { id: string; name: string; score: number; socketId: string }
+  >;
   answers: Map<string, Map<string, string>>; // questionId -> (playerId -> optionId)
 }
 

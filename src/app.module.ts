@@ -9,12 +9,7 @@ import { ResultsModule } from './modules/results/results.module';
 import { JwtAuthGuard } from './shared/guards/jwt-auth.guard';
 
 @Module({
-  imports: [
-    DatabaseModule,
-    QuizzesModule,
-    GameSessionModule,
-    ResultsModule,
-  ],
+  imports: [DatabaseModule, QuizzesModule, GameSessionModule, ResultsModule],
   controllers: [AppController],
   providers: [
     AppService,

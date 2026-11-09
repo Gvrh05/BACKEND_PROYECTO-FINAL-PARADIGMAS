@@ -7,13 +7,30 @@ import {
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { DefaultEventsMap, Server, Socket } from 'socket.io';
 import { Injectable, Logger } from '@nestjs/common';
 import * as jwt from 'jsonwebtoken';
 import { GameSessionService } from '../services/game-session.service';
 import { JoinRoomDto } from '../dto/join-room.dto';
 import { SubmitAnswerDto } from '../dto/submit-answer.dto';
 import { SOCKET_EVENTS } from '../../../shared/utils/constants';
+
+interface AuthenticatedUser {
+  userId: string;
+  username: string;
+  role?: string;
+}
+
+interface SocketData {
+  user?: AuthenticatedUser;
+}
+
+type AuthenticatedSocket = Socket<
+  DefaultEventsMap,
+  DefaultEventsMap,
+  DefaultEventsMap,
+  SocketData
+>;
 
 @WebSocketGateway({
   cors: {
@@ -33,8 +50,8 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
    * Valida el token JWT emitido por el microservicio auth al momento de conectar el WebSocket.
    * Rechaza la conexión si no tiene token o si es inválido.
    */
-  handleConnection(client: Socket) {
-    const token =
+  handleConnection(client: AuthenticatedSocket) {
+    const token: unknown =
       client.handshake.auth?.token ||
       (typeof client.handshake.headers?.authorization === 'string' &&
       client.handshake.headers.authorization.startsWith('Bearer ')
@@ -44,38 +61,56 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client.handshake.query?.token;
 
     if (!token || typeof token !== 'string') {
-      this.logger.warn(`Conexión WS rechazada: token faltante para socket ${client.id}`);
-      client.emit('unauthorized', { message: 'Token de autenticación requerido para conectar a WebSockets' });
+      this.logger.warn(
+        `Conexión WS rechazada: token faltante para socket ${client.id}`,
+      );
+      client.emit('unauthorized', {
+        message: 'Token de autenticación requerido para conectar a WebSockets',
+      });
       client.disconnect(true);
       return;
     }
 
     try {
       const secret = process.env.JWT_SECRET || 'secret_key_compartida';
-      const payload = jwt.verify(token, secret) as any;
+      const payload = jwt.verify(token, secret) as jwt.JwtPayload & {
+        sub?: string;
+        username?: string;
+        name?: string;
+        role?: string;
+      };
+      if (typeof payload.sub !== 'string' || payload.sub.length === 0) {
+        throw new Error('JWT subject is required');
+      }
 
-      client.data.user = {
+      const user: AuthenticatedUser = {
         userId: payload.sub,
-        username: payload.username || payload.name,
+        username: payload.username || payload.name || payload.sub,
         role: payload.role,
       };
+      client.data.user = user;
 
       this.logger.log(
-        `Cliente WS autenticado exitosamente: ${client.id} (Usuario: ${client.data.user.username}, Rol: ${client.data.user.role})`,
+        `Cliente WS autenticado exitosamente: ${client.id} (Usuario: ${user.username}, Rol: ${user.role})`,
       );
     } catch {
-      this.logger.warn(`Conexión WS rechazada: token inválido o expirado para socket ${client.id}`);
+      this.logger.warn(
+        `Conexión WS rechazada: token inválido o expirado para socket ${client.id}`,
+      );
       client.emit('unauthorized', { message: 'Token inválido o expirado' });
       client.disconnect(true);
     }
   }
 
-  handleDisconnect(client: Socket) {
+  handleDisconnect(client: AuthenticatedSocket) {
     this.logger.log(`Cliente desconectado: ${client.id}`);
   }
 
   @SubscribeMessage(SOCKET_EVENTS.JOIN_ROOM)
-  handleJoinRoom(@ConnectedSocket() client: Socket, @MessageBody() payload: JoinRoomDto) {
+  handleJoinRoom(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() payload: JoinRoomDto,
+  ) {
     if (!client.data.user) {
       client.emit('unauthorized', { message: 'No autenticado' });
       client.disconnect(true);
@@ -88,7 +123,10 @@ export class GameGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage(SOCKET_EVENTS.SUBMIT_ANSWER)
-  handleSubmitAnswer(@ConnectedSocket() client: Socket, @MessageBody() payload: SubmitAnswerDto) {
+  handleSubmitAnswer(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody() payload: SubmitAnswerDto,
+  ) {
     if (!client.data.user) {
       client.emit('unauthorized', { message: 'No autenticado' });
       client.disconnect(true);

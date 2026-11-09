@@ -59,6 +59,6 @@ Los grupos 1–4 corresponden a `kahoot-api/`. Los grupos 5–7 corresponden a `
 
 ## 8. Verificación integrada de la entrega
 
-- [ ] 8.1 Ejecutar en sus respectivos repositorios suites de API y web, compilaciones y lint sin reescritura automática no revisada; verificar los resultados registrados y que las pruebas de humo anteriores no requieren abrir endpoints privados ni modificar identidad.
+- [x] 8.1 Ejecutar en sus respectivos repositorios suites de API y web, compilaciones y lint sin reescritura automática no revisada; verificar los resultados registrados y que las pruebas de humo anteriores no requieren abrir endpoints privados ni modificar identidad.
 - [x] 8.2 Validar con PostgreSQL y servicio de autenticación reales el ciclo acceso → quiz → pregunta con cuatro opciones → imagen → edición → eliminación, repitiendo consulta tras reiniciar API y con otra cuenta; verificar persistencia, aislamiento y códigos previstos en OpenAPI.
 - [x] 8.3 Ejecutar el procedimiento documentado de despliegue/migración y recuperación en entorno descartable, incluyendo fallo de limpieza y reinicio; verificar volumen persistente, procesamiento de pendientes y que el rollback de aplicación conserva tablas y archivos sin operaciones destructivas automáticas.
