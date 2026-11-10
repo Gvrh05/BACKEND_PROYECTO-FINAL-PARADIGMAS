@@ -52,6 +52,7 @@ describe('TokenVerifier / JwtAuthGuard', () => {
       sub: 'host',
       email: 'demo@example.test',
       role: 'host',
+      name: 'Demo',
     });
     await expect(verifier.verify(signed)).resolves.toEqual({
       sub: 'host',

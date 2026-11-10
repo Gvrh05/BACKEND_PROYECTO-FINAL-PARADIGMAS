@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
+  IsEnum,
   IsArray,
   IsInt,
   IsString,
@@ -15,7 +16,13 @@ import {
 import { QuestionOptionDto } from './question-option.dto';
 import { ExactlyOneCorrect, TrimText } from './validation';
 
+import { QuestionKind } from '../entities/question.entity';
+
 export class AddQuestionDto {
+  @ValidateIf((_, value: unknown) => value !== undefined)
+  @IsEnum(QuestionKind)
+  kind?: QuestionKind;
+
   @TrimText()
   @IsString()
   @Length(1, 2000)
@@ -34,7 +41,7 @@ export class AddQuestionDto {
   points?: number;
 
   @IsArray()
-  @ArrayMinSize(4)
+  @ArrayMinSize(2)
   @ArrayMaxSize(4)
   @Validate(ExactlyOneCorrect)
   @ValidateNested({ each: true })

@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
+import { LiveGame } from './live-game';
 import { SessionManager } from './session-manager';
 import { SessionStatus } from '../entities/game-session.entity';
 import { GamePhase } from '../dto/game-state.dto';
@@ -20,11 +21,13 @@ describe('SessionManager', () => {
     expect(b.pin).toMatch(/^\d{6}$/);
     expect(a.pin).not.toBe(b.pin);
     expect(a.players).not.toBe(b.players);
-    expect(a.answers).not.toBe(b.answers);
+    a.liveGame = new LiveGame([]);
+    b.liveGame = new LiveGame([]);
+    expect(a.liveGame.responses).not.toBe(b.liveGame.responses);
     manager.addPlayer(a.pin, { userId: 'player', name: 'Player' });
-    a.answers.set('question', new Map([['player', 'reserved-data']]));
+    a.liveGame.responses.set('player', false);
     expect(b.players.has('player')).toBe(false);
-    expect(b.answers.size).toBe(0);
+    expect(b.liveGame.responses.size).toBe(0);
     expect(manager.listPlayers(a.pin)).toHaveLength(2);
     expect(manager.listPlayers(b.pin)).toHaveLength(1);
   });

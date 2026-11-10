@@ -124,12 +124,19 @@
           },
           "options": {
             "type": "array",
-            "minItems": 4,
+            "minItems": 2,
             "maxItems": 4,
-            "description": "Exactamente una opción correcta; se conserva el orden",
+            "description": "Cuatro opciones para MULTIPLE_CHOICE o Verdadero y Falso para TRUE_FALSE. Exactamente una correcta.",
             "items": {
               "$ref": "#/components/schemas/QuestionOptionInput"
             }
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "MULTIPLE_CHOICE",
+              "TRUE_FALSE"
+            ]
           }
         },
         "example": {
@@ -176,12 +183,19 @@
           },
           "options": {
             "type": "array",
-            "minItems": 4,
+            "minItems": 2,
             "maxItems": 4,
-            "description": "Reemplazo completo, con nuevos UUID y una única correcta",
+            "description": "Cuatro opciones para MULTIPLE_CHOICE o Verdadero y Falso para TRUE_FALSE. Exactamente una correcta.",
             "items": {
               "$ref": "#/components/schemas/QuestionOptionInput"
             }
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "MULTIPLE_CHOICE",
+              "TRUE_FALSE"
+            ]
           }
         }
       },
@@ -358,9 +372,9 @@
           },
           "options": {
             "type": "array",
-            "minItems": 4,
+            "minItems": 2,
             "maxItems": 4,
-            "description": "Exactamente una isCorrect=true y tres false; en orden",
+            "description": "Cuatro opciones para MULTIPLE_CHOICE o Verdadero y Falso para TRUE_FALSE. Exactamente una correcta.",
             "items": {
               "$ref": "#/components/schemas/QuestionOptionResource"
             }
@@ -371,6 +385,13 @@
             "readOnly": true,
             "description": "Ruta pública relativa al origen, por ejemplo /uploads/questions/q1.png",
             "example": "/uploads/questions/q1.png"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "MULTIPLE_CHOICE",
+              "TRUE_FALSE"
+            ]
           }
         }
       },
@@ -486,6 +507,9 @@
               "startedAt": {
                 "type": "string",
                 "format": "date-time"
+              },
+              "game": {
+                "$ref": "#/components/schemas/LiveRound"
               }
             }
           }
@@ -661,6 +685,60 @@
             "type": "string"
           }
         }
+      },
+      "LiveRound": {
+        "type": "object",
+        "properties": {
+          "questionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "questionText": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "position": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "version": {
+            "type": "integer"
+          },
+          "serverNow": {
+            "type": "integer"
+          },
+          "closesAt": {
+            "type": "integer"
+          },
+          "closed": {
+            "type": "boolean"
+          },
+          "correctAnswer": {
+            "type": "boolean"
+          },
+          "answered": {
+            "type": "boolean"
+          },
+          "points": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "questionId",
+          "questionText",
+          "imageUrl",
+          "position",
+          "total",
+          "version",
+          "serverNow",
+          "closesAt",
+          "closed"
+        ]
       }
     },
     "parameters": {
@@ -1345,6 +1423,9 @@
         "responses": {
           "200": {
             "description": "Resultados de la sesión"
+          },
+          "404": {
+            "description": "Resultado final no encontrado"
           }
         }
       }
@@ -1714,6 +1795,162 @@
         "direction": "server-to-socket",
         "payload": {
           "$ref": "#/components/schemas/WsError"
+        }
+      },
+      "submit-answer": {
+        "direction": "client-to-server",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "roomCode": {
+              "$ref": "#/components/schemas/RoomCode"
+            },
+            "questionId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "answer": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "roomCode",
+            "questionId",
+            "answer"
+          ]
+        }
+      },
+      "next-question": {
+        "direction": "client-to-server",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "roomCode": {
+              "$ref": "#/components/schemas/RoomCode"
+            },
+            "questionId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "roomCode",
+            "questionId"
+          ]
+        }
+      },
+      "answer-accepted": {
+        "direction": "server-to-socket",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "roomCode": {
+              "$ref": "#/components/schemas/RoomCode"
+            },
+            "questionId": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "required": [
+            "roomCode",
+            "questionId"
+          ]
+        }
+      },
+      "question-opened": {
+        "direction": "server-to-room",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "roomCode": {
+              "$ref": "#/components/schemas/RoomCode"
+            },
+            "game": {
+              "$ref": "#/components/schemas/LiveRound"
+            }
+          },
+          "required": [
+            "roomCode",
+            "game"
+          ]
+        }
+      },
+      "question-closed": {
+        "direction": "server-to-room",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "roomCode": {
+              "$ref": "#/components/schemas/RoomCode"
+            },
+            "game": {
+              "$ref": "#/components/schemas/LiveRound"
+            }
+          },
+          "required": [
+            "roomCode",
+            "game"
+          ]
+        }
+      },
+      "round-result": {
+        "direction": "server-to-socket",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "roomCode": {
+              "$ref": "#/components/schemas/RoomCode"
+            },
+            "game": {
+              "$ref": "#/components/schemas/LiveRound"
+            }
+          },
+          "required": [
+            "roomCode",
+            "game"
+          ]
+        }
+      },
+      "game-finished": {
+        "direction": "server-to-room",
+        "payload": {
+          "type": "object",
+          "properties": {
+            "roomCode": {
+              "$ref": "#/components/schemas/RoomCode"
+            },
+            "version": {
+              "type": "integer"
+            },
+            "scores": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "playerName": {
+                    "type": "string"
+                  },
+                  "score": {
+                    "type": "integer"
+                  },
+                  "rank": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "playerName",
+                  "score",
+                  "rank"
+                ]
+              }
+            }
+          },
+          "required": [
+            "roomCode",
+            "version",
+            "scores"
+          ]
         }
       }
     }

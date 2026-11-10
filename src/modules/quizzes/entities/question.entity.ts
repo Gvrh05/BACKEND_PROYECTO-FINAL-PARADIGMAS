@@ -13,6 +13,11 @@ import type { Relation } from 'typeorm';
 import { Quiz } from './quiz.entity';
 import { QuestionOption } from './question-option.entity';
 
+export enum QuestionKind {
+  MULTIPLE_CHOICE = 'MULTIPLE_CHOICE',
+  TRUE_FALSE = 'TRUE_FALSE',
+}
+
 @Entity('questions')
 @Index(['quizId', 'createdAt', 'id'])
 export class Question {
@@ -25,6 +30,9 @@ export class Question {
   @ManyToOne(() => Quiz, (quiz) => quiz.questions, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'quiz_id' })
   quiz: Relation<Quiz>;
+
+  @Column({ type: 'text', default: QuestionKind.MULTIPLE_CHOICE })
+  kind: QuestionKind;
 
   @Column({ name: 'question_text', type: 'text' })
   questionText: string;

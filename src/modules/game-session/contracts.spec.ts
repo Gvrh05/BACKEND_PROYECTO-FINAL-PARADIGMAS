@@ -36,6 +36,13 @@ describe('Punto 3 documentation contracts', () => {
     expect(Object.keys(document['x-websocket'].events).sort()).toEqual(
       [
         'error',
+        'answer-accepted',
+        'game-finished',
+        'next-question',
+        'question-closed',
+        'question-opened',
+        'round-result',
+        'submit-answer',
         'join-session',
         'participants-updated',
         'session-started',

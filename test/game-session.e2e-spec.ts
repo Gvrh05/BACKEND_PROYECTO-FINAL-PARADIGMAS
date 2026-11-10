@@ -59,7 +59,17 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
         id: quizId,
         title: 'Own quiz',
         authorId: PUNTO3_DEMO_AUTHOR_ID,
-        questions: [{ correctAnswer: true }],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        questions: [
+          {
+            id: quizId,
+            kind: 'TRUE_FALSE',
+            timeLimitSeconds: 20,
+            questionText: 'Fixture',
+            options: [{ text: 'Verdadero', isCorrect: true, position: 0 }],
+          },
+        ],
       },
       {
         id: foreignQuizId,
@@ -81,6 +91,7 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
           provide: DataSource,
           useValue: {
             getRepository: () => ({
+              findOne: () => Promise.resolve(quizRows[0]),
               findOneBy: (where: { id: string; authorId: string }) =>
                 Promise.resolve(
                   quizRows.find(

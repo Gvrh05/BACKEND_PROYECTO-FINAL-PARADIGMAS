@@ -1,13 +1,22 @@
 import 'reflect-metadata';
+import { mkdir } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
+import sharp from 'sharp';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { Quiz } from '../../modules/quizzes/entities/quiz.entity';
-import { Question } from '../../modules/quizzes/entities/question.entity';
+import {
+  Question,
+  QuestionKind,
+} from '../../modules/quizzes/entities/question.entity';
 import { QuestionOption } from '../../modules/quizzes/entities/question-option.entity';
 import { databaseOptions } from './database.options';
 import { PUNTO3_DEMO_AUTHOR_ID } from './punto3-demo-owner';
 
 export const DEMO_QUIZ_ID = '7ac9810a-b36c-4c85-8b58-b296434f0110';
+
+const BINARY_QUIZ_ID = 'efed51ad-1c55-4817-a164-c70f679e8000';
+const BINARY_IMAGE = 'efed51ad-1c55-4817-a164-c70f679e8001.png';
 
 /** Manual only: stable primary keys make repeated runs idempotent. */
 export async function seed() {
@@ -107,6 +116,72 @@ export async function seed() {
         ['id'],
       );
     });
+    const owner = process.env.LIVE_DEMO_AUTHOR_ID || PUNTO3_DEMO_AUTHOR_ID;
+    const folder = resolve(
+      process.env.UPLOADS_DEST || './uploads',
+      'questions',
+    );
+    await mkdir(folder, { recursive: true });
+    const image = await sharp(
+      Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" width="640" height="300"><rect width="640" height="300" fill="#e5eef9"/><circle cx="320" cy="150" r="90" fill="#3868ca"/></svg>',
+      ),
+    )
+      .png()
+      .toFile(join(folder, BINARY_IMAGE));
+    await database.transaction(async (manager) => {
+      await manager.getRepository(Quiz).upsert(
+        {
+          id: BINARY_QUIZ_ID,
+          title: 'Demo en vivo · Verdadero / Falso',
+          authorId: owner,
+        },
+        ['id'],
+      );
+      const examples = [
+        {
+          suffix: '1',
+          text: 'La figura azul de la imagen es un círculo.',
+          correct: true,
+        },
+        {
+          suffix: '2',
+          text: 'Todas las salas comparten sus participantes.',
+          correct: false,
+        },
+      ];
+      for (const example of examples) {
+        const id = 'efed51ad-1c55-4817-a164-c70f679e800' + example.suffix;
+        await manager.getRepository(Question).upsert(
+          {
+            id,
+            quizId: BINARY_QUIZ_ID,
+            kind: QuestionKind.TRUE_FALSE,
+            questionText: example.text,
+            timeLimitSeconds: 20,
+            ...(example.suffix === '1' && {
+              imageStorageKey: BINARY_IMAGE,
+              imageUrl: '/uploads/questions/' + BINARY_IMAGE,
+              imageMimeType: 'image/png',
+              imageSize: image.size,
+            }),
+          },
+          ['id'],
+        );
+        await manager.getRepository(QuestionOption).upsert(
+          [true, false].map((answer, position) => ({
+            id:
+              'efed51ad-1c55-4817-a164-c70f679e80' + example.suffix + position,
+            questionId: id,
+            text: answer ? 'Verdadero' : 'Falso',
+            isCorrect: answer === example.correct,
+            position,
+          })),
+          ['id'],
+        );
+      }
+    });
+    console.log('Quiz binario de demo: ' + BINARY_QUIZ_ID);
     console.log(`Quiz de demo: ${DEMO_QUIZ_ID}; ownerId: test-host-id`);
   } finally {
     await database.destroy();

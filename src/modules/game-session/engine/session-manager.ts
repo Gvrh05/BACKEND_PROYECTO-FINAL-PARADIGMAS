@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomInt } from 'node:crypto';
+import type { LiveGame } from './live-game';
 import { GamePhase } from '../dto/game-state.dto';
 import { ParticipantDto } from '../dto/participant.dto';
 import { SessionStatus } from '../entities/game-session.entity';
@@ -34,7 +35,7 @@ export interface ActiveSession {
   phase: GamePhase;
   currentQuestionIndex: number;
   players: Map<string, SessionPlayer>;
-  answers: Map<string, Map<string, string>>; // questionId -> (playerId -> optionId)
+  liveGame?: LiveGame;
 }
 
 @Injectable()
@@ -56,7 +57,6 @@ export class SessionManager {
       phase: GamePhase.LOBBY,
       currentQuestionIndex: 0,
       players: new Map(),
-      answers: new Map(),
     };
     session.players.set(
       hostId,

@@ -140,6 +140,15 @@ fallida conserva la imagen previa. Los nombres originales nunca determinan
 rutas de disco. El endpoint de descarga autenticado se conserva por compatibilidad;
 la URL serializada es pública y no requiere Bearer.
 
+## Probar la partida en vivo sin Docker
+
+1. Inicia un PostgreSQL de desarrollo y crea dos bases, una para Auth y otra para Kahoot. Usa el repositorio de Auth en su rama `develop`.
+2. Configura `DATABASE_URL`, `JWT_SECRET` y `JWT_AUDIENCE=kahoot-api` en Kahoot. En Auth configura su base, la misma clave y audiencia. En ambos servicios permite el origen de React mediante `CORS_ORIGIN`.
+3. Instala las dependencias con `pnpm install`, ejecuta `pnpm migration:run` en Kahoot e inicia ambas APIs con `pnpm start:dev`. Auth usa el puerto 3001 por defecto.
+4. Crea una cuenta de anfitrión y otra de participante con `POST /auth/register`. Para cargar el quiz de ejemplo, configura `LIVE_DEMO_AUTHOR_ID` con el UUID de la cuenta anfitriona y ejecuta `pnpm seed` en Kahoot. Esto agrega un quiz Verdadero/Falso de dos rondas con una imagen generada.
+5. En el frontend configura `VITE_API_URL` y `VITE_AUTH_API_URL` si usas puertos distintos de los valores de ejemplo. Inícialo con `pnpm dev`. Entra como anfitrión para crear sala, y como participante en una ventana privada para usar el PIN.
+6. Configura el destino OTLP e importa el tablero siguiendo [Grafana Cloud](docs/grafana/README.md).
+
 ## Quiz demo y ejecución local con Compose
 
 Auth usa **usuario y contraseña**, sin correo. El seed crea (o valida) la cuenta

@@ -26,6 +26,7 @@ describe('GameSessionService', () => {
     update: jest.Mock<Promise<{ affected: number }>, []>;
   };
   let quizzes: {
+    findOne: jest.Mock;
     findOneByOwner: jest.Mock<
       Promise<{ id: string; ownerId: string } | null>,
       []
@@ -42,6 +43,17 @@ describe('GameSessionService', () => {
       update: jest.fn(() => Promise.resolve({ affected: 1 })),
     };
     quizzes = {
+      findOne: jest.fn().mockResolvedValue({
+        questions: [
+          {
+            id: 'round',
+            kind: 'TRUE_FALSE',
+            questionText: 'Demo',
+            options: [],
+            timeLimitSeconds: 20,
+          },
+        ],
+      }),
       findOneByOwner: jest.fn(() =>
         Promise.resolve({ id: 'quiz', ownerId: 'host' }),
       ),
@@ -225,6 +237,51 @@ describe('GameSessionService', () => {
     expect(() => service.joinSession({ roomCode, userId: 'unknown' })).toThrow(
       BadRequestException,
     );
+  });
+
+  it('rejects host and outsiders and records just one concurrent answer for an enrolled player', async () => {
+    const { roomCode } = await service.createSession('host', 'quiz');
+    service.joinSession({ roomCode, userId: 'p', socketId: 's' });
+    await service.startSession(roomCode, 'host');
+    await expect(
+      service.submitAnswer(roomCode, 'host', 'round', false),
+    ).rejects.toThrow('FORBIDDEN');
+    await expect(
+      service.submitAnswer(roomCode, 'outsider', 'round', false),
+    ).rejects.toThrow('FORBIDDEN');
+    const responses = await Promise.allSettled([
+      service.submitAnswer(roomCode, 'p', 'round', false),
+      service.submitAnswer(roomCode, 'p', 'round', true),
+    ]);
+    expect(responses.map(({ status }) => status)).toEqual([
+      'fulfilled',
+      'rejected',
+    ]);
+    expect(service.getSessionByCode(roomCode, 'p').game).toMatchObject({
+      answered: true,
+    });
+    expect(service.getSessionByCode(roomCode, 'outsider')).not.toHaveProperty(
+      'game',
+    );
+  });
+
+  it('keeps the final round available to retry a failed result write', async () => {
+    const { roomCode } = await service.createSession('host', 'quiz');
+    await service.startSession(roomCode, 'host');
+    await expect(
+      service.nextQuestion(roomCode, 'host', 'round'),
+    ).rejects.toThrow('INVALID_SESSION_STATUS');
+    manager.requireSession(roomCode).liveGame?.close();
+    repository.update.mockRejectedValueOnce(new Error('storage failure'));
+    await expect(
+      service.nextQuestion(roomCode, 'host', 'round'),
+    ).rejects.toThrow('storage failure');
+    expect(service.getSessionByCode(roomCode, 'host').game?.closed).toBe(true);
+    await service.nextQuestion(roomCode, 'host', 'round');
+    expect(manager.getSession(roomCode)).toBeUndefined();
+    await expect(
+      service.nextQuestion(roomCode, 'host', 'round'),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 
   it('persists FINISHED/finishedAt before removing a room, without implementing results', async () => {
