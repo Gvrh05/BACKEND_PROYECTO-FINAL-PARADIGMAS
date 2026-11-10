@@ -22,7 +22,7 @@ describe('getDatabaseOptions', () => {
       migrationsRun: false,
       logging: false,
     });
-    expect(options.entities).toHaveLength(1);
+    expect(options.entities).toHaveLength(2);
     expect(options.migrations).toHaveLength(1);
   });
 

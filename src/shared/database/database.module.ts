@@ -8,7 +8,7 @@ import { DatabaseReadiness } from './database-readiness.service';
 @Module({
   imports: [
     TypeOrmModule.forRootAsync({
-      useFactory: () => getDatabaseOptions(),
+      useFactory: () => ({ ...getDatabaseOptions(), autoLoadEntities: true }),
     }),
   ],
   providers: [DatabaseReadiness],

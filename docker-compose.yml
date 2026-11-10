@@ -75,6 +75,10 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
       UPLOADS_DEST: /app/uploads
       MAX_FILE_SIZE: ${MAX_FILE_SIZE:-5242880}
+      JWT_ISSUER: ${JWT_ISSUER:-}
+      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth:3001/auth}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-kahoot-game-session}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
       - "${PORT:-3000}:3000"
     volumes:

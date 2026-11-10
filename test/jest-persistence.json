@@ -1,0 +1,7 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": "game-session\\.persistence-spec\\.ts$",
+  "transform": { "^.+\\.(t|j)s$": "ts-jest" }
+}

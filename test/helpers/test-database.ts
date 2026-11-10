@@ -9,6 +9,8 @@ import { InitialQuizAuthoring1794000000000 } from '../../src/shared/database/mig
 import { QuizIntegrity1794000000001 } from '../../src/shared/database/migrations/1794000000001-QuizIntegrity';
 import { DemoQuiz1794000000002 } from '../../src/shared/database/migrations/1794000000002-DemoQuiz';
 import { PublicQuestionImageUrl1794000000003 } from '../../src/shared/database/migrations/1794000000003-PublicQuestionImageUrl';
+import { GameSessions1794000000004 } from '../../src/shared/database/migrations/1794000000004-GameSessions';
+import { GameSessionEntity } from '../../src/modules/game-session/entities/game-session.entity';
 
 export async function createTestDatabase() {
   if (!process.env.TEST_DATABASE_URL) {
@@ -25,12 +27,19 @@ export async function createTestDatabase() {
   const options = getDatabaseOptions({ DATABASE_URL: url.toString() });
   const dataSource = new DataSource({
     ...options,
-    entities: [Quiz, Question, QuestionOption, FileCleanupJob],
+    entities: [
+      Quiz,
+      Question,
+      QuestionOption,
+      FileCleanupJob,
+      GameSessionEntity,
+    ],
     migrations: [
       InitialQuizAuthoring1794000000000,
       QuizIntegrity1794000000001,
       DemoQuiz1794000000002,
       PublicQuestionImageUrl1794000000003,
+      GameSessions1794000000004,
     ],
   });
   await dataSource.initialize();

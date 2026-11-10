@@ -11,10 +11,34 @@ import { serializeQuiz, serializeQuizDetail } from '../dto/resources';
 import { UpdateQuizDto } from '../dto/update-quiz.dto';
 import { Question } from '../entities/question.entity';
 import { enqueueCleanup } from './enqueue-cleanup';
+import { quizAuthorId } from '../../../shared/database/punto3-demo-owner';
 
 @Injectable()
 export class QuizzesService {
   constructor(private readonly dataSource: DataSource) {}
+
+  async findOneByOwner(quizId: string, ownerId: string): Promise<Quiz | null> {
+    const authorId = quizAuthorId(ownerId);
+    return authorId
+      ? this.dataSource.getRepository(Quiz).findOneBy({ id: quizId, authorId })
+      : null;
+  }
+
+  async existsAndOwnedBy(quizId: string, ownerId: string): Promise<boolean> {
+    const authorId = quizAuthorId(ownerId);
+    return authorId
+      ? this.dataSource.getRepository(Quiz).existsBy({ id: quizId, authorId })
+      : false;
+  }
+
+  async findAllByOwner(ownerId: string): Promise<Quiz[]> {
+    const authorId = quizAuthorId(ownerId);
+    return authorId
+      ? this.dataSource
+          .getRepository(Quiz)
+          .find({ where: { authorId }, order: { createdAt: 'ASC' } })
+      : [];
+  }
 
   async create(userId: string, dto: CreateQuizDto) {
     const quiz = await this.dataSource.getRepository(Quiz).save({

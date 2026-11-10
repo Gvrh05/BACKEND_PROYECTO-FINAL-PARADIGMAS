@@ -1,4 +1,9 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { Quiz } from './entities/quiz.entity';
+import { Question } from './entities/question.entity';
+import { QuestionOption } from './entities/question-option.entity';
+import { FileCleanupJob } from './entities/file-cleanup-job.entity';
 import { QuizzesController } from './controllers/quizzes.controller';
 import { QuizzesService } from './services/quizzes.service';
 import { QuestionsController } from './controllers/questions.controller';
@@ -11,6 +16,9 @@ import { QuestionImagesController } from './controllers/question-images.controll
 import { FileCleanupWorker } from './services/file-cleanup.worker';
 
 @Module({
+  imports: [
+    TypeOrmModule.forFeature([Quiz, Question, QuestionOption, FileCleanupJob]),
+  ],
   controllers: [
     QuizzesController,
     QuestionsController,

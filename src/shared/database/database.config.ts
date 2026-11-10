@@ -37,6 +37,10 @@ export function getDatabaseOptions(
         __dirname,
         '../../modules/quizzes/entities/*.entity{.ts,.js}',
       ).replace(/\\/g, '/'),
+      join(
+        __dirname,
+        '../../modules/game-session/entities/*.entity{.ts,.js}',
+      ).replace(/\\/g, '/'),
     ],
     migrations: [join(__dirname, 'migrations/*{.ts,.js}').replace(/\\/g, '/')],
     synchronize: false,

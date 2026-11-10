@@ -1,53 +1,58 @@
+import { ForbiddenException } from '@nestjs/common';
 import { GameGateway } from './game.gateway';
 import { GameSessionService } from '../services/game-session.service';
-import { QuizzesService } from '../../quizzes/services/quizzes.service';
+import { TokenVerifier } from '../../../shared/auth/token-verifier.service';
+import { GameSessionEvents } from './game-session.events';
 
-describe('GameGateway create_session', () => {
+/** The incoming create_session gateway was superseded by Punto 3 REST create.
+ * Keep gateway coverage on the authenticated, room-scoped join/start contract.
+ */
+describe('GameGateway Punto 3 integration', () => {
   const userId = 'c3e14bbe-d9d2-4c38-8a99-a741bf36d72e';
-  const quizId = 'd215cd05-97bd-4d12-8ad1-a107061f9182';
-  const service = { createSession: jest.fn() };
-  const quizzes = { findOne: jest.fn() };
+  const sessions = { startSession: jest.fn() };
+  const verifier = { verify: jest.fn() };
+  const events = { toSocket: jest.fn() };
   let gateway: GameGateway;
-
   beforeEach(() => {
     jest.clearAllMocks();
+    verifier.verify.mockResolvedValue({ sub: userId });
     gateway = new GameGateway(
-      service as unknown as GameSessionService,
-      quizzes as unknown as QuizzesService,
+      sessions as unknown as GameSessionService,
+      verifier as unknown as TokenVerifier,
+      events as unknown as GameSessionEvents,
     );
   });
-
-  it('checks quiz access before returning a new lobby PIN', async () => {
-    quizzes.findOne.mockResolvedValue({ id: quizId });
-    service.createSession.mockReturnValue({ pin: '482193', quizId });
-    const client = {
+  function socket() {
+    return {
       id: 'host-socket',
-      data: { user: { userId, username: 'profesor_test' } },
-    } as unknown as Parameters<GameGateway['handleCreateSession']>[0];
-
-    await expect(
-      gateway.handleCreateSession(client, { quizId }),
-    ).resolves.toEqual({
-      success: true,
-      pin: '482193',
-      quizId,
-    });
-    expect(quizzes.findOne).toHaveBeenCalledWith(userId, quizId);
-    expect(service.createSession).toHaveBeenCalledWith(quizId, 'host-socket');
+      connected: true,
+      handshake: { auth: { token: 'signed-token' } },
+      data: { user: { sub: userId } },
+    } as unknown as Parameters<GameGateway['start']>[0];
+  }
+  it('uses the verified subject for the shared start service', async () => {
+    await gateway.start(socket(), { roomCode: '482193' });
+    expect(sessions.startSession).toHaveBeenCalledWith('482193', userId);
+    expect(events.toSocket).not.toHaveBeenCalled();
   });
-
-  it('does not create a lobby for an invalid quiz id or inaccessible quiz', async () => {
-    const client = {
-      id: 'host-socket',
-      data: { user: { userId, username: 'profesor_test' } },
-    } as unknown as Parameters<GameGateway['handleCreateSession']>[0];
-    await expect(
-      gateway.handleCreateSession(client, { quizId: 'not-a-uuid' }),
-    ).resolves.toMatchObject({ success: false });
-    quizzes.findOne.mockRejectedValue(new Error('not found'));
-    await expect(
-      gateway.handleCreateSession(client, { quizId }),
-    ).rejects.toThrow('not found');
-    expect(service.createSession).not.toHaveBeenCalled();
+  it('rejects malformed room codes without starting a game', async () => {
+    await gateway.start(socket(), { roomCode: 'invalid' });
+    expect(sessions.startSession).not.toHaveBeenCalled();
+    expect(events.toSocket).toHaveBeenCalledWith(
+      'host-socket',
+      'error',
+      expect.objectContaining({ code: 'INVALID_ROOM_CODE' }),
+    );
+  });
+  it('keeps no-host errors private to the requesting socket', async () => {
+    sessions.startSession.mockRejectedValueOnce(
+      new ForbiddenException('Solo host'),
+    );
+    await gateway.start(socket(), { roomCode: '482193' });
+    expect(events.toSocket).toHaveBeenCalledWith(
+      'host-socket',
+      'error',
+      expect.objectContaining({ code: 'FORBIDDEN' }),
+    );
   });
 });
