@@ -4,7 +4,13 @@ import {
   ExecutionContext,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Request } from 'express';
+import type { Request } from 'express';
+import { TokenVerifier } from '../auth/token-verifier.service';
+import type { AuthenticatedUser } from '../auth/token-verifier.service';
+
+export type AuthenticatedRequest = Request & {
+  user: Omit<AuthenticatedUser, 'name'>;
+};
 
 /**
  * JwtAuthGuard
@@ -12,22 +18,23 @@ import { Request } from 'express';
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest<Request>();
+  constructor(private readonly verifier: TokenVerifier) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const authHeader = request.headers.authorization;
-
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Token de autenticación faltante o inválido');
+    const match = /^Bearer\s+(\S+)$/i.exec(authHeader ?? '');
+    if (!match) {
+      throw new UnauthorizedException(
+        'Token de autenticación faltante o inválido',
+      );
     }
-
-    // El token se extraerá y validará con la clave pública o JWT_SECRET
-    const token = authHeader.split(' ')[1];
-    if (!token) {
-      throw new UnauthorizedException('Formato de token no válido');
-    }
-
-    // Asignación de payload simulada hasta conectar con el servicio de verificación
-    request['user'] = { token };
+    const { sub, email, role } = await this.verifier.verify(match[1]);
+    request.user = {
+      sub,
+      ...(email !== undefined && { email }),
+      ...(role !== undefined && { role }),
+    };
     return true;
   }
 }

@@ -1,12 +1,24 @@
 import { Module, Global } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { databaseOptions } from './database.options';
 
 /**
  * DatabaseModule
- * Módulo global para la conexión y configuración de la base de datos (Prisma / TypeORM).
+ * Única conexión TypeORM/Postgres de la aplicación.
  */
 @Global()
 @Module({
-  providers: [],
-  exports: [],
+  imports: [
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        ...databaseOptions(config),
+        autoLoadEntities: true,
+      }),
+    }),
+  ],
+  exports: [TypeOrmModule],
 })
 export class DatabaseModule {}
