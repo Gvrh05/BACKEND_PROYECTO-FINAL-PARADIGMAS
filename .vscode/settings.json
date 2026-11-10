@@ -1,0 +1,6 @@
+{
+  "console-ninja.toolsToEnableSupportAutomaticallyFor": {
+    "jest": false,
+    "nest.js": false
+  }
+}

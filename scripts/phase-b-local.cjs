@@ -21,8 +21,8 @@ async function loadLocalConfig() {
   await db.connect();
   try {
     const result = await db.query(
-      'SELECT id FROM quizzes WHERE id = $1 AND "ownerId" = $2',
-      [quizId, 'test-host-id'],
+      'SELECT id FROM quizzes WHERE id = $1 AND author_id = $2',
+      [quizId, '7ac9810a-b36c-4c85-8b58-b296434f0100'],
     );
     if (result.rowCount !== 1)
       throw new Error(

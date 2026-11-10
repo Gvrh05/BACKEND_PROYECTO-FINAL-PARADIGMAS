@@ -2,7 +2,7 @@ import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { TokenVerifier } from './token-verifier.service';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { GameSessionAuthGuard as JwtAuthGuard } from './game-session-auth.guard';
 
 describe('TokenVerifier / JwtAuthGuard', () => {
   const settings = {

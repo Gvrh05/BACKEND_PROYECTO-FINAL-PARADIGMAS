@@ -10,8 +10,9 @@ import {
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../../../shared/guards/jwt-auth.guard';
-import type { AuthenticatedRequest } from '../../../shared/guards/jwt-auth.guard';
+import { GameSessionAuthGuard } from '../../../shared/auth/game-session-auth.guard';
+import type { AuthenticatedRequest } from '../../../shared/auth/game-session-auth.guard';
+import { Public } from '../../../shared/decorators/public.decorator';
 import { GameSessionService } from '../services/game-session.service';
 import { CreateGameSessionDto } from '../dto/create-game-session.dto';
 import { JoinSessionDto } from '../dto/join-session.dto';
@@ -26,7 +27,9 @@ import {
 } from '../dto/session-response.dto';
 
 @Controller('game-sessions')
-@UseGuards(JwtAuthGuard)
+// Bypass only the global UUID-only authoring guard, never authentication here.
+@Public()
+@UseGuards(GameSessionAuthGuard)
 // Local validation preserves the existing contracts of quizzes and results.
 @UsePipes(
   new ValidationPipe({

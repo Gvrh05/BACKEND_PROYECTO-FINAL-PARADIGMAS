@@ -17,18 +17,34 @@ import { GameSessionEvents } from '../gateways/game-session.events';
 describe('GameSessionService', () => {
   let manager: SessionManager;
   let service: GameSessionService;
-  let repository: { create: jest.Mock; save: jest.Mock; update: jest.Mock };
-  let quizzes: { findOneByOwner: jest.Mock };
+  let repository: {
+    create: jest.Mock<Partial<GameSessionEntity>, [Partial<GameSessionEntity>]>;
+    save: jest.Mock<
+      Promise<Partial<GameSessionEntity>>,
+      [Partial<GameSessionEntity>]
+    >;
+    update: jest.Mock<Promise<{ affected: number }>, []>;
+  };
+  let quizzes: {
+    findOneByOwner: jest.Mock<
+      Promise<{ id: string; ownerId: string } | null>,
+      []
+    >;
+  };
 
   beforeEach(() => {
     manager = new SessionManager();
     repository = {
-      create: jest.fn((data) => data),
-      save: jest.fn(async (data) => data),
-      update: jest.fn(async () => ({ affected: 1 })),
+      create: jest.fn((data: Partial<GameSessionEntity>) => data),
+      save: jest.fn((data: Partial<GameSessionEntity>) =>
+        Promise.resolve(data),
+      ),
+      update: jest.fn(() => Promise.resolve({ affected: 1 })),
     };
     quizzes = {
-      findOneByOwner: jest.fn(async () => ({ id: 'quiz', ownerId: 'host' })),
+      findOneByOwner: jest.fn(() =>
+        Promise.resolve({ id: 'quiz', ownerId: 'host' }),
+      ),
     };
     service = new GameSessionService(
       manager,
@@ -51,7 +67,7 @@ describe('GameSessionService', () => {
   it('creates and persists the room, including the host exactly once', async () => {
     const created = await service.createSession('host', 'quiz');
     expect(created).toEqual({
-      sessionId: expect.stringMatching(/^\d{6}$/),
+      sessionId: expect.stringMatching(/^\d{6}$/) as unknown,
       roomCode: created.sessionId,
       status: SessionStatus.LOBBY,
       hostId: 'host',
@@ -63,7 +79,7 @@ describe('GameSessionService', () => {
         hostId: 'host',
         quizId: 'quiz',
         status: SessionStatus.LOBBY,
-        createdAt: expect.any(Date),
+        createdAt: expect.any(Date) as unknown,
       }),
     );
     expect(service.listParticipants(created.roomCode)).toEqual([
@@ -216,7 +232,10 @@ describe('GameSessionService', () => {
     await service.removeSession(roomCode);
     expect(repository.update).toHaveBeenCalledWith(
       { roomCode },
-      { status: SessionStatus.FINISHED, finishedAt: expect.any(Date) },
+      {
+        status: SessionStatus.FINISHED,
+        finishedAt: expect.any(Date) as unknown,
+      },
     );
     expect(manager.getSession(roomCode)).toBeUndefined();
     expect(manager.activeCount).toBe(0);

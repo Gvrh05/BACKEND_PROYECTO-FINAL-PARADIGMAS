@@ -7,6 +7,7 @@ export const APP_CONFIG = {
 
 export const SOCKET_EVENTS = {
   JOIN_ROOM: 'join_room',
+  CREATE_SESSION: 'create_session',
   PLAYER_JOINED: 'player_joined',
   START_GAME: 'start_game',
   NEW_QUESTION: 'new_question',

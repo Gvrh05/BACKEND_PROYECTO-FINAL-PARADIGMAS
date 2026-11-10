@@ -4,6 +4,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { Quiz } from '../src/modules/quizzes/entities/quiz.entity';
 import { Question } from '../src/modules/quizzes/entities/question.entity';
+import { QuestionOption } from '../src/modules/quizzes/entities/question-option.entity';
 import { QuizzesService } from '../src/modules/quizzes/services/quizzes.service';
 import {
   GameSessionEntity,
@@ -12,6 +13,7 @@ import {
 import { SessionManager } from '../src/modules/game-session/engine/session-manager';
 import { GameSessionEvents } from '../src/modules/game-session/gateways/game-session.events';
 import { GameSessionService } from '../src/modules/game-session/services/game-session.service';
+import { getDatabaseOptions } from '../src/shared/database/database.config';
 
 /** Opt-in real Postgres integration, never part of the default transport e2e.
  * Only a random, test-owned schema in the dedicated local test DB is removed.
@@ -20,7 +22,7 @@ import { GameSessionService } from '../src/modules/game-session/services/game-se
 describe('GameSession persistence with real Postgres', () => {
   jest.setTimeout(60000);
   const schema = `punto3_${randomUUID().replace(/-/g, '')}`;
-  const hostId = `integration-host-${randomUUID()}`;
+  const hostId = randomUUID();
   let database: DataSource;
   let schemaCreated = false;
   let quizzes: QuizzesService;
@@ -44,11 +46,8 @@ describe('GameSession persistence with real Postgres', () => {
       );
     }
     database = new DataSource({
-      type: 'postgres',
-      url: raw,
+      ...getDatabaseOptions({ DATABASE_URL: raw }),
       schema,
-      synchronize: false,
-      entities: [Quiz, Question, GameSessionEntity],
     });
     await database.initialize();
     const runner = database.createQueryRunner();
@@ -58,8 +57,8 @@ describe('GameSession persistence with real Postgres', () => {
     } finally {
       await runner.release();
     }
-    await database.synchronize();
-    quizzes = new QuizzesService(database.getRepository(Quiz));
+    await database.runMigrations();
+    quizzes = new QuizzesService(database);
     manager = new SessionManager();
     service = new GameSessionService(
       manager,
@@ -69,7 +68,7 @@ describe('GameSession persistence with real Postgres', () => {
     );
     quiz = await database
       .getRepository(Quiz)
-      .save({ title: 'Integration fixture (not demo seed)', ownerId: hostId });
+      .save({ title: 'Integration fixture (not demo seed)', authorId: hostId });
   });
 
   afterAll(async () => {
@@ -88,13 +87,13 @@ describe('GameSession persistence with real Postgres', () => {
     }
   });
 
-  it('maps camelCase columns and owner queries using real repositories', async () => {
+  it('maps the authoring schema and owner queries using real repositories', async () => {
     const columns: { column_name: string }[] = await database.query(
       'SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name IN ($2, $3)',
       [schema, 'quizzes', 'questions'],
     );
     expect(columns.map((column) => column.column_name)).toEqual(
-      expect.arrayContaining(['ownerId', 'quizId', 'correctAnswer']),
+      expect.arrayContaining(['author_id', 'quiz_id', 'question_text']),
     );
     await expect(quizzes.findAllByOwner(hostId)).resolves.toEqual([
       expect.objectContaining({ id: quiz.id }),
@@ -102,7 +101,9 @@ describe('GameSession persistence with real Postgres', () => {
     await expect(
       service.createSession('other-owner', quiz.id),
     ).rejects.toBeInstanceOf(ForbiddenException);
-    await expect(quizzes.findAll()).resolves.toEqual([]);
+    await expect(quizzes.findAll(hostId)).resolves.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: quiz.id })]),
+    );
   });
 
   it('persists a UUID row and a unique six-digit code before publishing LOBBY', async () => {
@@ -116,7 +117,7 @@ describe('GameSession persistence with real Postgres', () => {
       quizId: quiz.id,
       hostId,
       status: SessionStatus.LOBBY,
-      createdAt: expect.any(Date),
+      createdAt: expect.any(Date) as unknown,
       startedAt: null,
       finishedAt: null,
     });
@@ -156,15 +157,21 @@ describe('GameSession persistence with real Postgres', () => {
   it('enforces the physical question FK with cascade inside the isolated test schema', async () => {
     const temporary = await database
       .getRepository(Quiz)
-      .save({ title: 'Cascade fixture', ownerId: hostId });
-    await database
-      .getRepository(Question)
-      .save({
+      .save({ title: 'Cascade fixture', authorId: hostId });
+    await database.transaction(async (manager) => {
+      const question = await manager.getRepository(Question).save({
         quizId: temporary.id,
-        statement: 'Fixture?',
-        correctAnswer: true,
-        order: 1,
+        questionText: 'Fixture?',
       });
+      await manager.getRepository(QuestionOption).save(
+        Array.from({ length: 4 }, (_, position) => ({
+          questionId: question.id,
+          text: `Option ${position}`,
+          isCorrect: position === 0,
+          position,
+        })),
+      );
+    });
     await database.getRepository(Quiz).delete(temporary.id);
     expect(
       await database.getRepository(Question).countBy({ quizId: temporary.id }),

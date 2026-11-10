@@ -17,9 +17,10 @@ import { GameSessionEvents } from '../src/modules/game-session/gateways/game-ses
 import { SessionManager } from '../src/modules/game-session/engine/session-manager';
 import { GameSessionEntity } from '../src/modules/game-session/entities/game-session.entity';
 import { QuizzesService } from '../src/modules/quizzes/services/quizzes.service';
-import { Quiz } from '../src/modules/quizzes/entities/quiz.entity';
 import type { SessionSnapshotDto } from '../src/modules/game-session/dto/session-response.dto';
 import type { ParticipantDto } from '../src/modules/game-session/dto/participant.dto';
+import { DataSource } from 'typeorm';
+import { PUNTO3_DEMO_AUTHOR_ID } from '../src/shared/database/punto3-demo-owner';
 
 /** Transport e2e: real Nest controllers/gateway/JWT/services, controlled repositories.
  * Real Postgres is covered separately by scripts/verify-phase-b-{rest,ws}.cjs.
@@ -57,10 +58,14 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
       {
         id: quizId,
         title: 'Own quiz',
-        ownerId: 'test-host-id',
+        authorId: PUNTO3_DEMO_AUTHOR_ID,
         questions: [{ correctAnswer: true }],
       },
-      { id: foreignQuizId, title: 'Foreign quiz', ownerId: 'another-host' },
+      {
+        id: foreignQuizId,
+        title: 'Foreign quiz',
+        authorId: '7ac9810a-b36c-4c85-8b58-b296434f0200',
+      },
     ];
     const sessionRows = new Map<string, Record<string, unknown>>();
     const module = await Test.createTestingModule({
@@ -73,25 +78,32 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
         GameSessionEvents,
         QuizzesService,
         {
-          provide: getRepositoryToken(Quiz),
+          provide: DataSource,
           useValue: {
-            findOneBy: async (where: { id: string; ownerId: string }) =>
-              quizRows.find(
-                (row) => row.id === where.id && row.ownerId === where.ownerId,
-              ) ?? null,
-            find: async ({ where }: { where: { ownerId: string } }) =>
-              quizRows.filter((row) => row.ownerId === where.ownerId),
+            getRepository: () => ({
+              findOneBy: (where: { id: string; authorId: string }) =>
+                Promise.resolve(
+                  quizRows.find(
+                    (row) =>
+                      row.id === where.id && row.authorId === where.authorId,
+                  ) ?? null,
+                ),
+              find: ({ where }: { where: { authorId: string } }) =>
+                Promise.resolve(
+                  quizRows.filter((row) => row.authorId === where.authorId),
+                ),
+            }),
           },
         },
         {
           provide: getRepositoryToken(GameSessionEntity),
           useValue: {
             create: (data: Record<string, unknown>) => ({ ...data }),
-            save: async (data: Record<string, unknown>) => {
+            save: (data: Record<string, unknown>) => {
               sessionRows.set(data.roomCode as string, { ...data });
-              return data;
+              return Promise.resolve(data);
             },
-            update: async (
+            update: (
               where: Record<string, unknown>,
               data: Record<string, unknown>,
             ) => {
@@ -102,9 +114,9 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
                   ([key, value]) => row[key] === value,
                 )
               )
-                return { affected: 0 };
+                return Promise.resolve({ affected: 0 });
               Object.assign(row, data);
-              return { affected: 1 };
+              return Promise.resolve({ affected: 1 });
             },
           },
         },
@@ -274,7 +286,7 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
     expect(own.body).toEqual([{ id: quizId, title: 'Own quiz' }]);
     const other = await request(app.getHttpServer())
       .get(`${prefix}/available-quizzes`)
-      .auth(jwt('another-host'), { type: 'bearer' })
+      .auth(jwt('7ac9810a-b36c-4c85-8b58-b296434f0200'), { type: 'bearer' })
       .expect(200);
     expect(other.body).toEqual([{ id: foreignQuizId, title: 'Foreign quiz' }]);
     const empty = await request(app.getHttpServer())

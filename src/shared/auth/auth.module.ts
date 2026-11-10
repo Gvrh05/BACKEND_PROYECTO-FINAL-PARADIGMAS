@@ -2,11 +2,11 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { TokenVerifier } from './token-verifier.service';
-import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { GameSessionAuthGuard } from './game-session-auth.guard';
 
 @Module({
   imports: [ConfigModule, JwtModule.register({})],
-  providers: [TokenVerifier, JwtAuthGuard],
-  exports: [TokenVerifier, JwtAuthGuard],
+  providers: [TokenVerifier, GameSessionAuthGuard],
+  exports: [TokenVerifier, GameSessionAuthGuard],
 })
 export class AuthModule {}

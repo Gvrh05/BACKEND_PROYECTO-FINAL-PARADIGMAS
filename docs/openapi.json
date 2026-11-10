@@ -3,7 +3,7 @@
   "info": {
     "title": "Profelink Kahoot Monolith API",
     "description": "Backend API para la plataforma interactiva tipo Kahoot en arquitectura Vertical Slice (Monolito Modular)",
-    "version": "1.0.0"
+    "version": "2.0.0"
   },
   "servers": [
     {
@@ -11,209 +11,18 @@
       "description": "Servidor de Desarrollo Local"
     }
   ],
-  "paths": {
-    "/game-sessions": {
-      "post": {
-        "operationId": "createGameSession",
-        "summary": "Crear sala con un cuestionario propio",
-        "tags": ["GameSessions"],
-        "security": [{ "BearerAuth": [] }],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/CreateSessionRequest" }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Sala persistida en LOBBY; el host se registra una sola vez",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/Session" }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "500": { "$ref": "#/components/responses/InternalError" }
-        }
-      }
-    },
-    "/game-sessions/available-quizzes": {
-      "get": {
-        "operationId": "listAvailableQuizzes",
-        "summary": "Listar solo quizzes propios para el selector del host",
-        "description": "Filtra por sub del JWT mediante findAllByOwner; no llama al mock público GET /quizzes ni expone preguntas/respuestas.",
-        "tags": ["GameSessions"],
-        "security": [{ "BearerAuth": [] }],
-        "responses": {
-          "200": {
-            "description": "Catálogo propio; puede ser []",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": { "$ref": "#/components/schemas/AvailableQuiz" }
-                }
-              }
-            }
-          },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "500": { "$ref": "#/components/responses/InternalError" }
-        }
-      }
-    },
-    "/game-sessions/{roomCode}": {
-      "get": {
-        "operationId": "getSessionByCode",
-        "summary": "Recuperar snapshot de una sala para reconexión",
-        "description": "No registra al solicitante ni cambia la fase. El lobby en memoria debe existir en el proceso actual.",
-        "tags": ["GameSessions"],
-        "security": [{ "BearerAuth": [] }],
-        "parameters": [{ "$ref": "#/components/parameters/RoomCode" }],
-        "responses": {
-          "200": {
-            "description": "Estado actual de esta sala",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/SessionSnapshot" }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
-        }
-      }
-    },
-    "/game-sessions/{roomCode}/participants": {
-      "get": {
-        "operationId": "listSessionParticipants",
-        "summary": "Listar participantes de una sola sala",
-        "tags": ["GameSessions"],
-        "security": [{ "BearerAuth": [] }],
-        "parameters": [{ "$ref": "#/components/parameters/RoomCode" }],
-        "responses": {
-          "200": {
-            "description": "Host y jugadores sin tokens, sockets, respuestas ni puntajes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": { "$ref": "#/components/schemas/Participant" }
-                }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
-        }
-      }
-    },
-    "/game-sessions/{roomCode}/join": {
-      "post": {
-        "operationId": "joinSession",
-        "summary": "Unirse o actualizar un participante por sub, idempotentemente",
-        "description": "Nuevo jugador solo en LOBBY. Una identidad existente puede reconectar en IN_PROGRESS. REST por sí solo no marca connected=true; eso requiere WS.",
-        "tags": ["GameSessions"],
-        "security": [{ "BearerAuth": [] }],
-        "parameters": [{ "$ref": "#/components/parameters/RoomCode" }],
-        "requestBody": {
-          "required": false,
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/JoinSessionRequest" }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "added=false si ya existía la identidad; nunca la duplica",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/JoinSessionResponse" }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "$ref": "#/components/responses/NotFound" }
-        }
-      }
-    },
-    "/game-sessions/{roomCode}/start": {
-      "post": {
-        "operationId": "startSession",
-        "summary": "Iniciar la sala, exclusivamente como anfitrión",
-        "description": "Solo LOBBY → IN_PROGRESS; persiste status/startedAt y notifica session-started a la sala para inicios REST o WS. El botón UI requiere otro jugador conectado; la autorización del endpoint compara sub con hostId.",
-        "tags": ["GameSessions"],
-        "security": [{ "BearerAuth": [] }],
-        "parameters": [{ "$ref": "#/components/parameters/RoomCode" }],
-        "responses": {
-          "200": {
-            "description": "Inicio persistido exactamente una vez",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/StartedSession" }
-              }
-            }
-          },
-          "400": { "$ref": "#/components/responses/BadRequest" },
-          "401": { "$ref": "#/components/responses/Unauthorized" },
-          "403": { "$ref": "#/components/responses/Forbidden" },
-          "404": { "$ref": "#/components/responses/NotFound" },
-          "500": { "$ref": "#/components/responses/InternalError" }
-        }
-      }
-    },
-    "/quizzes": {
-      "get": {
-        "summary": "Listar cuestionarios",
-        "tags": ["Quizzes"],
-        "responses": {
-          "200": {
-            "description": "Lista de cuestionarios obtenida con éxito"
-          }
-        }
-      },
-      "post": {
-        "summary": "Crear un nuevo cuestionario",
-        "tags": ["Quizzes"],
-        "responses": {
-          "201": {
-            "description": "Cuestionario creado con éxito"
-          }
-        }
-      }
-    },
-    "/results/{pin}": {
-      "get": {
-        "summary": "Obtener resultados de una sesión por PIN",
-        "tags": ["Results"],
-        "parameters": [
-          {
-            "name": "pin",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Resultados de la sesión"
-          }
-        }
-      }
+  "security": [
+    {
+      "bearerAuth": []
     }
-  },
+  ],
   "components": {
     "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
       "BearerAuth": {
         "type": "http",
         "scheme": "bearer",
@@ -221,57 +30,350 @@
         "description": "Firma HS256 y secreto compartido solo dev/demo; requiere sub y valida expiración e issuer/audience configurados."
       }
     },
-    "parameters": {
-      "RoomCode": {
-        "name": "roomCode",
-        "in": "path",
-        "required": true,
-        "schema": { "$ref": "#/components/schemas/RoomCode" }
-      }
-    },
-    "responses": {
-      "BadRequest": {
-        "description": "Validación inválida, sala ya iniciada para un jugador nuevo o fase distinta de LOBBY para iniciar",
-        "content": {
-          "application/json": {
-            "schema": { "$ref": "#/components/schemas/HttpError" }
-          }
-        }
-      },
-      "Unauthorized": {
-        "description": "JWT ausente, inválido, expirado o sin sub válido",
-        "content": {
-          "application/json": {
-            "schema": { "$ref": "#/components/schemas/HttpError" }
-          }
-        }
-      },
-      "Forbidden": {
-        "description": "Quiz inexistente/ajeno al crear, o solicitante distinto del host al iniciar",
-        "content": {
-          "application/json": {
-            "schema": { "$ref": "#/components/schemas/HttpError" }
-          }
-        }
-      },
-      "NotFound": {
-        "description": "No existe un lobby activo para ese código en este proceso",
-        "content": {
-          "application/json": {
-            "schema": { "$ref": "#/components/schemas/HttpError" }
-          }
-        }
-      },
-      "InternalError": {
-        "description": "Error del servidor sin datos sensibles",
-        "content": {
-          "application/json": {
-            "schema": { "$ref": "#/components/schemas/HttpError" }
-          }
-        }
-      }
-    },
     "schemas": {
+      "CreateQuiz": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 150
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "nullable": true
+          },
+          "coverImageUrl": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true,
+            "description": "Solo HTTP(S)"
+          }
+        }
+      },
+      "UpdateQuiz": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 150
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "nullable": true
+          },
+          "coverImageUrl": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true,
+            "description": "Solo HTTP(S)"
+          }
+        }
+      },
+      "QuestionOptionInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "isCorrect"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "isCorrect": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CreateQuestion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "questionText",
+          "options"
+        ],
+        "properties": {
+          "questionText": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "timeLimitSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300,
+            "default": 20
+          },
+          "points": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "default": 1000
+          },
+          "options": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "Exactamente una opción correcta; se conserva el orden",
+            "items": {
+              "$ref": "#/components/schemas/QuestionOptionInput"
+            }
+          }
+        },
+        "example": {
+          "questionText": "¿Cuál es un lenguaje funcional?",
+          "options": [
+            {
+              "text": "Haskell",
+              "isCorrect": true
+            },
+            {
+              "text": "HTML",
+              "isCorrect": false
+            },
+            {
+              "text": "CSS",
+              "isCorrect": false
+            },
+            {
+              "text": "JSON",
+              "isCorrect": false
+            }
+          ]
+        }
+      },
+      "UpdateQuestion": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "questionText": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "timeLimitSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300
+          },
+          "points": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000
+          },
+          "options": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "Reemplazo completo, con nuevos UUID y una única correcta",
+            "items": {
+              "$ref": "#/components/schemas/QuestionOptionInput"
+            }
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "statusCode",
+          "timestamp",
+          "path",
+          "error"
+        ],
+        "properties": {
+          "statusCode": {
+            "type": "integer"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "path": {
+            "type": "string"
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        }
+      },
+      "QuizSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "authorId",
+          "isDemo",
+          "title",
+          "description",
+          "coverImageUrl",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true
+          },
+          "authorId": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true
+          },
+          "isDemo": {
+            "type": "boolean",
+            "readOnly": true,
+            "description": "Los cuestionarios demo son visibles para todas las cuentas y de solo lectura."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 150
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "nullable": true
+          },
+          "coverImageUrl": {
+            "type": "string",
+            "format": "uri",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "readOnly": true
+          }
+        }
+      },
+      "QuizDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/QuizSummary"
+          },
+          {
+            "type": "object",
+            "required": [
+              "questions"
+            ],
+            "properties": {
+              "questions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/QuestionResource"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "QuestionOptionResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "text",
+          "isCorrect"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "isCorrect": {
+            "type": "boolean"
+          }
+        }
+      },
+      "QuestionResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "quizId",
+          "questionText",
+          "timeLimitSeconds",
+          "points",
+          "options",
+          "imageUrl"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true
+          },
+          "quizId": {
+            "type": "string",
+            "format": "uuid",
+            "readOnly": true
+          },
+          "questionText": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "timeLimitSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 300,
+            "default": 20
+          },
+          "points": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000,
+            "default": 1000
+          },
+          "options": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "Exactamente una isCorrect=true y tres false; en orden",
+            "items": {
+              "$ref": "#/components/schemas/QuestionOptionResource"
+            }
+          },
+          "imageUrl": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true,
+            "description": "Ruta pública relativa al origen, por ejemplo /uploads/questions/q1.png",
+            "example": "/uploads/questions/q1.png"
+          }
+        }
+      },
       "RoomCode": {
         "type": "string",
         "pattern": "^\\d{6}$",
@@ -281,14 +383,24 @@
       },
       "SessionStatus": {
         "type": "string",
-        "enum": ["LOBBY", "IN_PROGRESS", "FINISHED"]
+        "enum": [
+          "LOBBY",
+          "IN_PROGRESS",
+          "FINISHED"
+        ]
       },
       "CreateSessionRequest": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["quizId"],
+        "required": [
+          "quizId"
+        ],
         "properties": {
-          "quizId": { "type": "string", "format": "uuid", "minLength": 1 }
+          "quizId": {
+            "type": "string",
+            "format": "uuid",
+            "minLength": 1
+          }
         }
       },
       "JoinSessionRequest": {
@@ -307,10 +419,18 @@
       "Participant": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["userId", "name", "connected"],
+        "required": [
+          "userId",
+          "name",
+          "connected"
+        ],
         "properties": {
-          "userId": { "type": "string" },
-          "name": { "type": "string" },
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
           "connected": {
             "type": "boolean",
             "description": "Presencia WS; no basta un join REST"
@@ -319,42 +439,73 @@
       },
       "Session": {
         "type": "object",
-        "required": ["sessionId", "roomCode", "status", "hostId", "quizId"],
+        "required": [
+          "sessionId",
+          "roomCode",
+          "status",
+          "hostId",
+          "quizId"
+        ],
         "properties": {
-          "sessionId": { "$ref": "#/components/schemas/RoomCode" },
-          "roomCode": { "$ref": "#/components/schemas/RoomCode" },
-          "status": { "$ref": "#/components/schemas/SessionStatus" },
+          "sessionId": {
+            "$ref": "#/components/schemas/RoomCode"
+          },
+          "roomCode": {
+            "$ref": "#/components/schemas/RoomCode"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SessionStatus"
+          },
           "hostId": {
             "type": "string",
             "description": "sub verificado del anfitrión"
           },
-          "quizId": { "type": "string", "format": "uuid" }
+          "quizId": {
+            "type": "string",
+            "format": "uuid"
+          }
         }
       },
       "SessionSnapshot": {
         "allOf": [
-          { "$ref": "#/components/schemas/Session" },
+          {
+            "$ref": "#/components/schemas/Session"
+          },
           {
             "type": "object",
-            "required": ["participants"],
+            "required": [
+              "participants"
+            ],
             "properties": {
               "participants": {
                 "type": "array",
-                "items": { "$ref": "#/components/schemas/Participant" }
+                "items": {
+                  "$ref": "#/components/schemas/Participant"
+                }
               },
-              "startedAt": { "type": "string", "format": "date-time" }
+              "startedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
             }
           }
         ]
       },
       "StartedSession": {
         "allOf": [
-          { "$ref": "#/components/schemas/Session" },
+          {
+            "$ref": "#/components/schemas/Session"
+          },
           {
             "type": "object",
-            "required": ["startedAt"],
+            "required": [
+              "startedAt"
+            ],
             "properties": {
-              "startedAt": { "type": "string", "format": "date-time" }
+              "startedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
             }
           }
         ]
@@ -362,41 +513,83 @@
       "AvailableQuiz": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "title"],
+        "required": [
+          "id",
+          "title"
+        ],
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "title": { "type": "string" }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          }
         }
       },
       "JoinSessionResponse": {
         "type": "object",
-        "required": ["added", "player"],
+        "required": [
+          "added",
+          "player"
+        ],
         "properties": {
-          "added": { "type": "boolean" },
-          "player": { "$ref": "#/components/schemas/Participant" }
+          "added": {
+            "type": "boolean"
+          },
+          "player": {
+            "$ref": "#/components/schemas/Participant"
+          }
         }
       },
       "HttpError": {
         "type": "object",
-        "required": ["statusCode", "timestamp", "path", "error"],
+        "required": [
+          "statusCode",
+          "timestamp",
+          "path",
+          "error"
+        ],
         "properties": {
-          "statusCode": { "type": "integer", "minimum": 400, "maximum": 599 },
-          "timestamp": { "type": "string", "format": "date-time" },
-          "path": { "type": "string" },
+          "statusCode": {
+            "type": "integer",
+            "minimum": 400,
+            "maximum": 599
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "path": {
+            "type": "string"
+          },
           "error": {
             "oneOf": [
-              { "type": "string" },
+              {
+                "type": "string"
+              },
               {
                 "type": "object",
                 "properties": {
                   "message": {
                     "oneOf": [
-                      { "type": "string" },
-                      { "type": "array", "items": { "type": "string" } }
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
                     ]
                   },
-                  "error": { "type": "string" },
-                  "statusCode": { "type": "integer" }
+                  "error": {
+                    "type": "string"
+                  },
+                  "statusCode": {
+                    "type": "integer"
+                  }
                 }
               }
             ]
@@ -406,32 +599,51 @@
       "WsRoomPayload": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["roomCode"],
+        "required": [
+          "roomCode"
+        ],
         "properties": {
-          "roomCode": { "$ref": "#/components/schemas/RoomCode" }
+          "roomCode": {
+            "$ref": "#/components/schemas/RoomCode"
+          }
         }
       },
       "ParticipantsUpdatedEvent": {
         "type": "object",
-        "required": ["participants"],
+        "required": [
+          "participants"
+        ],
         "properties": {
           "participants": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/Participant" }
+            "items": {
+              "$ref": "#/components/schemas/Participant"
+            }
           }
         }
       },
       "SessionStartedEvent": {
         "type": "object",
-        "required": ["sessionId", "startedAt"],
+        "required": [
+          "sessionId",
+          "startedAt"
+        ],
         "properties": {
-          "sessionId": { "$ref": "#/components/schemas/RoomCode" },
-          "startedAt": { "type": "string", "format": "date-time" }
+          "sessionId": {
+            "$ref": "#/components/schemas/RoomCode"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "WsError": {
         "type": "object",
-        "required": ["code", "message"],
+        "required": [
+          "code",
+          "message"
+        ],
         "properties": {
           "code": {
             "type": "string",
@@ -445,7 +657,1016 @@
               "INTERNAL_ERROR"
             ]
           },
-          "message": { "type": "string" }
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "parameters": {
+      "QuizId": {
+        "name": "quizId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "QuestionId": {
+        "name": "questionId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "RoomCode": {
+        "name": "roomCode",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/RoomCode"
+        }
+      }
+    },
+    "responses": {
+      "QuizResource": {
+        "description": "Cuestionario persistido; recurso directo, sin wrapper data",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/QuizSummary"
+            }
+          }
+        }
+      },
+      "QuestionResource": {
+        "description": "Pregunta persistida con cuatro opciones",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/QuestionResource"
+            }
+          }
+        }
+      },
+      "NoContent": {
+        "description": "Eliminado sin cuerpo de respuesta"
+      },
+      "PayloadTooLarge": {
+        "description": "Archivo superior al límite configurado (5 MiB por defecto)",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "UnsupportedImage": {
+        "description": "No es JPEG/PNG/WebP válido, tipo falsificado o más de 25 megapíxeles",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Error interno sin detalles SQL o rutas físicas",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Entrada inválida o PATCH vacío",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Token ausente, inválido o expirado",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Recurso inexistente, ajeno o fuera de su cuestionario",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "GameSessionBadRequest": {
+        "description": "Validación inválida, sala ya iniciada para un jugador nuevo o fase distinta de LOBBY para iniciar",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HttpError"
+            }
+          }
+        }
+      },
+      "GameSessionUnauthorized": {
+        "description": "JWT ausente, inválido, expirado o sin sub válido",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HttpError"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "Quiz inexistente/ajeno al crear, o solicitante distinto del host al iniciar",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HttpError"
+            }
+          }
+        }
+      },
+      "GameSessionNotFound": {
+        "description": "No existe un lobby activo para ese código en este proceso",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HttpError"
+            }
+          }
+        }
+      },
+      "GameSessionInternalError": {
+        "description": "Error del servidor sin datos sensibles",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/HttpError"
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/quizzes": {
+      "get": {
+        "summary": "Listar solo cuestionarios propios, del más reciente al más antiguo",
+        "tags": [
+          "Quizzes"
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista propia o arreglo vacío",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QuizSummary"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "Crear un cuestionario propio inicialmente sin preguntas",
+        "tags": [
+          "Quizzes"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateQuiz"
+              },
+              "example": {
+                "title": "Paradigmas",
+                "description": "Repaso"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/QuizResource"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/quizzes/{quizId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/QuizId"
+        }
+      ],
+      "get": {
+        "summary": "Consultar cuestionario propio con preguntas y opciones",
+        "tags": [
+          "Quizzes"
+        ],
+        "responses": {
+          "200": {
+            "description": "Detalle propio",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuizDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Editar metadatos propios; null quita descripción o portada",
+        "tags": [
+          "Quizzes"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateQuiz"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/QuizResource"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Eliminar cuestionario, preguntas y opciones; revocar imágenes y encolar limpieza",
+        "tags": [
+          "Quizzes"
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/components/responses/NoContent"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/quizzes/{quizId}/questions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/QuizId"
+        }
+      ],
+      "get": {
+        "summary": "Listar preguntas propias en orden de creación",
+        "tags": [
+          "Questions"
+        ],
+        "responses": {
+          "200": {
+            "description": "Preguntas o arreglo vacío",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QuestionResource"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "post": {
+        "summary": "Crear pregunta propia con cuatro opciones y una correcta",
+        "tags": [
+          "Questions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateQuestion"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "$ref": "#/components/responses/QuestionResource"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/quizzes/{quizId}/questions/{questionId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/QuizId"
+        },
+        {
+          "$ref": "#/components/parameters/QuestionId"
+        }
+      ],
+      "get": {
+        "summary": "Consultar una pregunta del cuestionario propio",
+        "tags": [
+          "Questions"
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/QuestionResource"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Editar pregunta y sustituir opciones como conjunto atómico",
+        "tags": [
+          "Questions"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateQuestion"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/QuestionResource"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Eliminar pregunta, opciones y asociación de imagen",
+        "tags": [
+          "Questions"
+        ],
+        "responses": {
+          "204": {
+            "$ref": "#/components/responses/NoContent"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/quizzes/{quizId}/questions/{questionId}/image": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/QuizId"
+        },
+        {
+          "$ref": "#/components/parameters/QuestionId"
+        }
+      ],
+      "put": {
+        "summary": "Adjuntar o sustituir una imagen de acceso público",
+        "tags": [
+          "Question Images"
+        ],
+        "description": "Un único archivo JPEG, PNG o WebP en image, sin campos adicionales. Máximo 5 MiB por defecto (MAX_FILE_SIZE), hasta 25 megapíxeles. La firma y decodificación deben coincidir con el MIME declarado. La imagen anterior se conserva si falla la carga o el commit. La imagen resultante es pública en /uploads/questions/<filename>.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "image"
+                ],
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              },
+              "encoding": {
+                "image": {
+                  "contentType": "image/jpeg, image/png, image/webp"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/QuestionResource"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedImage"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "post": {
+        "summary": "Subir una imagen usando HTTP POST",
+        "tags": [
+          "Question Images"
+        ],
+        "description": "Admite el mismo multipart y validaciones que PUT; devuelve la pregunta actualizada y una URL pública.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "image"
+                ],
+                "properties": {
+                  "image": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              },
+              "encoding": {
+                "image": {
+                  "contentType": "image/jpeg, image/png, image/webp"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/QuestionResource"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "415": {
+            "$ref": "#/components/responses/UnsupportedImage"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      },
+      "get": {
+        "summary": "Leer el binario mediante la ruta autenticada de compatibilidad",
+        "tags": [
+          "Question Images"
+        ],
+        "description": "Esta ruta autenticada se conserva por compatibilidad. imageUrl apunta a /uploads/questions/<filename>, una ruta estática pública sin autenticación.",
+        "responses": {
+          "200": {
+            "description": "Binario autenticado de compatibilidad",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "type": "string",
+                  "example": "private, no-store"
+                }
+              },
+              "X-Content-Type-Options": {
+                "schema": {
+                  "type": "string",
+                  "example": "nosniff"
+                }
+              }
+            },
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Quitar imagen sin borrar la pregunta",
+        "tags": [
+          "Question Images"
+        ],
+        "description": "204 también si la pregunta propia ya no tiene imagen; el acceso se revoca al confirmar y el archivo se limpia con reintentos persistentes.",
+        "responses": {
+          "204": {
+            "$ref": "#/components/responses/NoContent"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Salud pública",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "API disponible"
+          }
+        }
+      }
+    },
+    "/results/{pin}": {
+      "get": {
+        "summary": "Obtener resultados de una sesión por PIN",
+        "tags": [
+          "Results"
+        ],
+        "parameters": [
+          {
+            "name": "pin",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resultados de la sesión"
+          }
+        }
+      }
+    },
+    "/uploads/questions/{filename}": {
+      "servers": [
+        {
+          "url": "http://localhost:3000",
+          "description": "Origen del servidor de archivos estáticos"
+        }
+      ],
+      "parameters": [
+        {
+          "name": "filename",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "pattern": "^(q([1-9]|10)\\.png|[0-9a-fA-F-]{36}\\.(jpg|png|webp))$"
+          }
+        }
+      ],
+      "get": {
+        "summary": "Leer públicamente una imagen seed o subida",
+        "description": "Las imágenes son públicas intencionalmente y no requieren Bearer. Los PNG q1.png–q10.png son assets seed y los uploads usan nombres UUID.",
+        "security": [],
+        "tags": [
+          "Question Images"
+        ],
+        "responses": {
+          "200": {
+            "description": "Imagen PNG/JPEG/WebP",
+            "content": {
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/jpeg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "image/webp": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe la imagen"
+          }
+        }
+      }
+    },
+    "/game-sessions": {
+      "post": {
+        "operationId": "createGameSession",
+        "summary": "Crear sala con un cuestionario propio",
+        "tags": [
+          "GameSessions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSessionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Sala persistida en LOBBY; el host se registra una sola vez",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Session"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/GameSessionBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/GameSessionUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "500": {
+            "$ref": "#/components/responses/GameSessionInternalError"
+          }
+        }
+      }
+    },
+    "/game-sessions/available-quizzes": {
+      "get": {
+        "operationId": "listAvailableQuizzes",
+        "summary": "Listar solo quizzes propios para el selector del host",
+        "description": "Filtra por sub del JWT mediante findAllByOwner; no llama al mock público GET /quizzes ni expone preguntas/respuestas.",
+        "tags": [
+          "GameSessions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Catálogo propio; puede ser []",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AvailableQuiz"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/GameSessionUnauthorized"
+          },
+          "500": {
+            "$ref": "#/components/responses/GameSessionInternalError"
+          }
+        }
+      }
+    },
+    "/game-sessions/{roomCode}": {
+      "get": {
+        "operationId": "getSessionByCode",
+        "summary": "Recuperar snapshot de una sala para reconexión",
+        "description": "No registra al solicitante ni cambia la fase. El lobby en memoria debe existir en el proceso actual.",
+        "tags": [
+          "GameSessions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RoomCode"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estado actual de esta sala",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionSnapshot"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/GameSessionBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/GameSessionUnauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/GameSessionNotFound"
+          }
+        }
+      }
+    },
+    "/game-sessions/{roomCode}/participants": {
+      "get": {
+        "operationId": "listSessionParticipants",
+        "summary": "Listar participantes de una sola sala",
+        "tags": [
+          "GameSessions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RoomCode"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Host y jugadores sin tokens, sockets, respuestas ni puntajes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Participant"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/GameSessionBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/GameSessionUnauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/GameSessionNotFound"
+          }
+        }
+      }
+    },
+    "/game-sessions/{roomCode}/join": {
+      "post": {
+        "operationId": "joinSession",
+        "summary": "Unirse o actualizar un participante por sub, idempotentemente",
+        "description": "Nuevo jugador solo en LOBBY. Una identidad existente puede reconectar en IN_PROGRESS. REST por sí solo no marca connected=true; eso requiere WS.",
+        "tags": [
+          "GameSessions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RoomCode"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinSessionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "added=false si ya existía la identidad; nunca la duplica",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/GameSessionBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/GameSessionUnauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/GameSessionNotFound"
+          }
+        }
+      }
+    },
+    "/game-sessions/{roomCode}/start": {
+      "post": {
+        "operationId": "startSession",
+        "summary": "Iniciar la sala, exclusivamente como anfitrión",
+        "description": "Solo LOBBY → IN_PROGRESS; persiste status/startedAt y notifica session-started a la sala para inicios REST o WS. El botón UI requiere otro jugador conectado; la autorización del endpoint compara sub con hostId.",
+        "tags": [
+          "GameSessions"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RoomCode"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Inicio persistido exactamente una vez",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartedSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/GameSessionBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/GameSessionUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/GameSessionNotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/GameSessionInternalError"
+          }
         }
       }
     }
@@ -460,28 +1681,40 @@
       "join-session": {
         "direction": "client-to-server",
         "auth": "JWT",
-        "payload": { "$ref": "#/components/schemas/WsRoomPayload" }
+        "payload": {
+          "$ref": "#/components/schemas/WsRoomPayload"
+        }
       },
       "session-state": {
         "direction": "server-to-socket",
-        "payload": { "$ref": "#/components/schemas/SessionSnapshot" }
+        "payload": {
+          "$ref": "#/components/schemas/SessionSnapshot"
+        }
       },
       "participants-updated": {
         "direction": "server-to-room",
-        "payload": { "$ref": "#/components/schemas/ParticipantsUpdatedEvent" }
+        "payload": {
+          "$ref": "#/components/schemas/ParticipantsUpdatedEvent"
+        }
       },
       "start-session": {
         "direction": "client-to-server",
         "auth": "JWT + sub === hostId",
-        "payload": { "$ref": "#/components/schemas/WsRoomPayload" }
+        "payload": {
+          "$ref": "#/components/schemas/WsRoomPayload"
+        }
       },
       "session-started": {
         "direction": "server-to-room",
-        "payload": { "$ref": "#/components/schemas/SessionStartedEvent" }
+        "payload": {
+          "$ref": "#/components/schemas/SessionStartedEvent"
+        }
       },
       "error": {
         "direction": "server-to-socket",
-        "payload": { "$ref": "#/components/schemas/WsError" }
+        "payload": {
+          "$ref": "#/components/schemas/WsError"
+        }
       }
     }
   }

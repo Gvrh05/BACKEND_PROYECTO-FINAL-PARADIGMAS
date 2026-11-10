@@ -1,10 +1,23 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+interface ContractDocument {
+  security?: unknown;
+  paths: Record<
+    string,
+    Record<string, { security?: unknown; responses: Record<string, unknown> }>
+  >;
+  components: {
+    schemas: { RoomCode: { type: string; pattern: string } };
+    securitySchemes: Record<string, unknown>;
+  };
+  'x-websocket': { events: Record<string, unknown> };
+}
+
 describe('Punto 3 documentation contracts', () => {
   const document = JSON.parse(
     readFileSync(resolve(__dirname, '../../../docs/openapi.json'), 'utf8'),
-  );
+  ) as ContractDocument;
 
   it('documents six protected routes, response codes and only the agreed WS events', () => {
     const routes = [
@@ -42,7 +55,15 @@ describe('Punto 3 documentation contracts', () => {
           const target = String(item)
             .slice(2)
             .split('/')
-            .reduce((node, part) => node?.[part], document);
+            .reduce<unknown>(
+              (node, part) =>
+                node && typeof node === 'object'
+                  ? (node as Record<string, unknown>)[
+                      part.replace(/~1/g, '/').replace(/~0/g, '~')
+                    ]
+                  : undefined,
+              document,
+            );
           expect(target).toBeDefined();
         } else walk(item);
       }
@@ -54,36 +75,19 @@ describe('Punto 3 documentation contracts', () => {
     expect('12345').not.toMatch(new RegExp(code.pattern));
   });
 
-  it('preserves the original quizzes/results documentation and does not add global authentication to it', () => {
-    expect(document.security).toBeUndefined();
-    expect(document.paths['/quizzes']).toEqual({
-      get: {
-        summary: 'Listar cuestionarios',
-        tags: ['Quizzes'],
-        responses: {
-          '200': { description: 'Lista de cuestionarios obtenida con éxito' },
-        },
-      },
-      post: {
-        summary: 'Crear un nuevo cuestionario',
-        tags: ['Quizzes'],
-        responses: { '201': { description: 'Cuestionario creado con éxito' } },
-      },
-    });
-    expect(document.paths['/results/{pin}']).toEqual({
-      get: {
-        summary: 'Obtener resultados de una sesión por PIN',
-        tags: ['Results'],
-        parameters: [
-          {
-            name: 'pin',
-            in: 'path',
-            required: true,
-            schema: { type: 'string' },
-          },
-        ],
-        responses: { '200': { description: 'Resultados de la sesión' } },
-      },
-    });
+  it('preserves the incoming authoring, health, uploads and results contracts alongside Punto 3', () => {
+    expect(document.security).toEqual([{ bearerAuth: [] }]);
+    for (const route of [
+      '/quizzes',
+      '/quizzes/{quizId}',
+      '/quizzes/{quizId}/questions',
+      '/health',
+      '/uploads/questions/{filename}',
+      '/results/{pin}',
+    ]) {
+      expect(document.paths[route]).toBeDefined();
+    }
+    expect(document.components.securitySchemes.bearerAuth).toBeDefined();
+    expect(document.components.securitySchemes.BearerAuth).toBeDefined();
   });
 });

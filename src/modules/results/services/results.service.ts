@@ -4,7 +4,7 @@ import { ExportReportDto } from '../dto/export-report.dto';
 
 @Injectable()
 export class ResultsService {
-  async findByPin(pin: string): Promise<GameResult | null> {
+  findByPin(pin: string): GameResult | null {
     return {
       id: `result_${pin}`,
       pin,
@@ -15,7 +15,7 @@ export class ResultsService {
     };
   }
 
-  async exportReport(dto: ExportReportDto) {
+  exportReport(dto: ExportReportDto) {
     return {
       sessionId: dto.sessionId,
       format: dto.format,

@@ -15,7 +15,12 @@ import { GameSessionEvents } from './gateways/game-session.events';
     QuizzesModule,
     AuthModule,
   ],
-  providers: [GameSessionService, GameGateway, SessionManager, GameSessionEvents],
+  providers: [
+    GameSessionService,
+    GameGateway,
+    SessionManager,
+    GameSessionEvents,
+  ],
   controllers: [GameSessionController],
   exports: [GameSessionService, SessionManager],
 })

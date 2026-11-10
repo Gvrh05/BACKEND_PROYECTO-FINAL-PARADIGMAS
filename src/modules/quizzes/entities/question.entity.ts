@@ -1,51 +1,63 @@
 import {
   Column,
+  CreateDateColumn,
   Entity,
+  Index,
   JoinColumn,
   ManyToOne,
+  OneToMany,
   PrimaryGeneratedColumn,
+  UpdateDateColumn,
 } from 'typeorm';
-import { Quiz } from './quiz.entity';
 import type { Relation } from 'typeorm';
+import { Quiz } from './quiz.entity';
+import { QuestionOption } from './question-option.entity';
 
 @Entity('questions')
+@Index(['quizId', 'createdAt', 'id'])
 export class Question {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'uuid' })
+  @Column({ name: 'quiz_id', type: 'uuid' })
   quizId: string;
 
   @ManyToOne(() => Quiz, (quiz) => quiz.questions, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'quizId' })
+  @JoinColumn({ name: 'quiz_id' })
   quiz: Relation<Quiz>;
 
-  @Column({ type: 'text' })
-  statement: string;
-
-  @Column({ type: 'boolean' })
-  correctAnswer: boolean;
-
-  @Column({ type: 'int' })
-  order: number;
-
-  // Legacy properties stay available; the public quiz CRUD remains unchanged.
-  @Column({ type: 'text', nullable: true })
+  @Column({ name: 'question_text', type: 'text' })
   questionText: string;
 
-  @Column({ type: 'int', default: 20 })
+  @Column({ name: 'time_limit_seconds', type: 'int', default: 20 })
   timeLimitSeconds: number;
 
   @Column({ type: 'int', default: 1000 })
   points: number;
 
-  @Column({ type: 'jsonb', default: () => "'[]'::jsonb" })
-  options: {
-    id: string;
-    text: string;
-    isCorrect: boolean;
-  }[];
+  @OneToMany(() => QuestionOption, (option) => option.question)
+  options: Relation<QuestionOption[]>;
 
-  @Column({ type: 'varchar', nullable: true })
-  imageUrl?: string;
+  @Column({
+    name: 'image_storage_key',
+    type: 'text',
+    nullable: true,
+    unique: true,
+  })
+  imageStorageKey: string | null;
+
+  @Column({ name: 'image_url', type: 'text', nullable: true })
+  imageUrl: string | null;
+
+  @Column({ name: 'image_mime_type', type: 'text', nullable: true })
+  imageMimeType: string | null;
+
+  @Column({ name: 'image_size', type: 'int', nullable: true })
+  imageSize: number | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt: Date;
 }

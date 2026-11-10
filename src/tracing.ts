@@ -12,6 +12,7 @@ const span: Span = { end: noop, recordException: noop, setStatus: noop };
 const instrument = { add: noop, record: noop };
 
 export function getTracer(_name: string) {
+  void _name;
   return {
     startActiveSpan<T>(
       _spanName: string,
@@ -23,18 +24,37 @@ export function getTracer(_name: string) {
 }
 
 export function getMeter(_name: string) {
+  void _name;
   return {
-    createCounter: (_instrumentName: string) => ({
-      add: (_value: number, _attributes?: Record<string, string>) =>
-        instrument.add(),
-    }),
-    createGauge: (_instrumentName: string) => ({
-      record: (_value: number, _attributes?: Record<string, string>) =>
-        instrument.record(),
-    }),
-    createHistogram: (_instrumentName: string) => ({
-      record: (_value: number, _attributes?: Record<string, string>) =>
-        instrument.record(),
-    }),
+    createCounter: (_instrumentName: string) => {
+      void _instrumentName;
+      return {
+        add: (value: number, attributes?: Record<string, string>) => {
+          void value;
+          void attributes;
+          instrument.add();
+        },
+      };
+    },
+    createGauge: (_instrumentName: string) => {
+      void _instrumentName;
+      return {
+        record: (value: number, attributes?: Record<string, string>) => {
+          void value;
+          void attributes;
+          instrument.record();
+        },
+      };
+    },
+    createHistogram: (_instrumentName: string) => {
+      void _instrumentName;
+      return {
+        record: (value: number, attributes?: Record<string, string>) => {
+          void value;
+          void attributes;
+          instrument.record();
+        },
+      };
+    },
   };
 }

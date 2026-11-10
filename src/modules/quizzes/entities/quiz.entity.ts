@@ -2,35 +2,41 @@ import {
   Column,
   CreateDateColumn,
   Entity,
+  Index,
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import type { Relation } from 'typeorm';
 import { Question } from './question.entity';
 
 @Entity('quizzes')
+@Index(['authorId', 'createdAt', 'id'])
 export class Quiz {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'varchar' })
+  @Column({ name: 'author_id', type: 'uuid' })
+  authorId: string;
+
+  @Column({ type: 'varchar', length: 150 })
   title: string;
 
-  @Column({ type: 'varchar' })
-  ownerId: string;
-
   @Column({ type: 'text', nullable: true })
-  description?: string;
+  description: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
-  coverImageUrl?: string;
+  @Column({ name: 'cover_image_url', type: 'text', nullable: true })
+  coverImageUrl: string | null;
 
-  @CreateDateColumn({ type: 'timestamptz' })
+  @Column({ name: 'is_demo', type: 'boolean', default: false })
+  isDemo: boolean;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
 
   @OneToMany(() => Question, (question) => question.quiz)
-  questions: Question[];
+  questions: Relation<Question[]>;
 }

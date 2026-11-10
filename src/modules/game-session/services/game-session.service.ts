@@ -181,6 +181,7 @@ export class GameSessionService {
 
   /** Legacy stub intentionally disabled: the old DTO cannot prove identity. */
   joinRoom(_dto: JoinRoomDto): never {
+    void _dto;
     throw new UnauthorizedException(
       'Usa joinSession con una identidad autenticada',
     );

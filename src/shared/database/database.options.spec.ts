@@ -4,6 +4,7 @@ import { databaseOptions } from './database.options';
 import { Quiz } from '../../modules/quizzes/entities/quiz.entity';
 import { Question } from '../../modules/quizzes/entities/question.entity';
 import { GameSessionEntity } from '../../modules/game-session/entities/game-session.entity';
+import { QuestionOption } from '../../modules/quizzes/entities/question-option.entity';
 
 class MetadataOnlyDataSource extends DataSource {
   buildMetadataWithoutConnecting() {
@@ -16,7 +17,7 @@ describe('TypeORM configuration and entity mapping (no database connection)', ()
     'postgresql://postgres:postgres@localhost:5432/kahoot_db?schema=public';
 
   it.each(['development', 'test', 'production'])(
-    'preserves DATABASE_URL and only synchronizes outside production: %s',
+    'uses the shared migration configuration without synchronizing: %s',
     (environment) => {
       expect(
         databaseOptions(
@@ -24,9 +25,9 @@ describe('TypeORM configuration and entity mapping (no database connection)', ()
         ),
       ).toMatchObject({
         type: 'postgres',
-        url,
+        url: 'postgresql://postgres:postgres@localhost:5432/kahoot_db',
         schema: 'public',
-        synchronize: environment !== 'production',
+        synchronize: false,
       });
     },
   );
@@ -40,14 +41,14 @@ describe('TypeORM configuration and entity mapping (no database connection)', ()
       ...databaseOptions(
         new ConfigService({ DATABASE_URL: url, NODE_ENV: 'test' }),
       ),
-      entities: [Quiz, Question, GameSessionEntity],
+      entities: [Quiz, Question, QuestionOption, GameSessionEntity],
     });
     await source.buildMetadataWithoutConnecting();
     const quiz = source.getMetadata(Quiz);
     const question = source.getMetadata(Question);
     const session = source.getMetadata(GameSessionEntity);
     expect(quiz.tableName).toBe('quizzes');
-    expect(quiz.findColumnWithPropertyName('ownerId')?.type).toBe('varchar');
+    expect(quiz.findColumnWithPropertyName('authorId')?.type).toBe('uuid');
     expect(question.foreignKeys).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ onDelete: 'CASCADE' }),

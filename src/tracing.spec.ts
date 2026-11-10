@@ -20,9 +20,9 @@ describe('tracing no-op integration seam', () => {
       });
       expect(result).toBe(42);
       await expect(
-        tracer.startActiveSpan('async', async (span) => {
+        tracer.startActiveSpan('async', (span) => {
           span.end();
-          return 7;
+          return Promise.resolve(7);
         }),
       ).resolves.toBe(7);
       expect(() =>

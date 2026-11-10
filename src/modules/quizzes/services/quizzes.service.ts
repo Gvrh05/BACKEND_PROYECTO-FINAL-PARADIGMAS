@@ -1,42 +1,121 @@
-import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Quiz as QuizEntity } from '../entities/quiz.entity';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { DataSource } from 'typeorm';
+import type { EntityManager } from 'typeorm';
 import { CreateQuizDto } from '../dto/create-quiz.dto';
-import { AddQuestionDto } from '../dto/add-question.dto';
+import { Quiz } from '../entities/quiz.entity';
+import { serializeQuiz, serializeQuizDetail } from '../dto/resources';
+import { UpdateQuizDto } from '../dto/update-quiz.dto';
+import { Question } from '../entities/question.entity';
+import { enqueueCleanup } from './enqueue-cleanup';
+import { quizAuthorId } from '../../../shared/database/punto3-demo-owner';
 
 @Injectable()
 export class QuizzesService {
-  constructor(
-    @InjectRepository(QuizEntity)
-    private readonly quizzes: Repository<QuizEntity>,
-  ) {}
+  constructor(private readonly dataSource: DataSource) {}
 
-  async create(createQuizDto: CreateQuizDto) {
-    return { message: 'Quiz created successfully', data: createQuizDto };
-  }
-
-  async findAll() {
-    return [];
-  }
-
-  async findOne(id: string) {
-    return { id, title: 'Sample Quiz' };
-  }
-
-  async addQuestion(quizId: string, addQuestionDto: AddQuestionDto) {
-    return { quizId, question: addQuestionDto };
-  }
-
-  async findOneByOwner(quizId: string, ownerId: string): Promise<QuizEntity | null> {
-    return this.quizzes.findOneBy({ id: quizId, ownerId });
+  async findOneByOwner(quizId: string, ownerId: string): Promise<Quiz | null> {
+    const authorId = quizAuthorId(ownerId);
+    return authorId
+      ? this.dataSource.getRepository(Quiz).findOneBy({ id: quizId, authorId })
+      : null;
   }
 
   async existsAndOwnedBy(quizId: string, ownerId: string): Promise<boolean> {
-    return this.quizzes.existsBy({ id: quizId, ownerId });
+    const authorId = quizAuthorId(ownerId);
+    return authorId
+      ? this.dataSource.getRepository(Quiz).existsBy({ id: quizId, authorId })
+      : false;
   }
 
-  async findAllByOwner(ownerId: string): Promise<QuizEntity[]> {
-    return this.quizzes.find({ where: { ownerId }, order: { createdAt: 'ASC' } });
+  async findAllByOwner(ownerId: string): Promise<Quiz[]> {
+    const authorId = quizAuthorId(ownerId);
+    return authorId
+      ? this.dataSource
+          .getRepository(Quiz)
+          .find({ where: { authorId }, order: { createdAt: 'ASC' } })
+      : [];
+  }
+
+  async create(userId: string, dto: CreateQuizDto) {
+    const quiz = await this.dataSource.getRepository(Quiz).save({
+      authorId: userId,
+      title: dto.title,
+      description: dto.description ?? null,
+      coverImageUrl: dto.coverImageUrl ?? null,
+    });
+    return serializeQuiz(quiz);
+  }
+
+  async findAll(userId: string) {
+    const quizzes = await this.dataSource.getRepository(Quiz).find({
+      where: [{ authorId: userId }, { isDemo: true }],
+      order: { createdAt: 'DESC', id: 'DESC' },
+    });
+    return quizzes.map(serializeQuiz);
+  }
+
+  async findOne(userId: string, id: string) {
+    const quiz = await this.dataSource.getRepository(Quiz).findOne({
+      where: [
+        { id, authorId: userId },
+        { id, isDemo: true },
+      ],
+      relations: { questions: { options: true } },
+      order: {
+        questions: {
+          createdAt: 'ASC',
+          id: 'ASC',
+          options: { position: 'ASC' },
+        },
+      },
+    });
+    if (!quiz) throw new NotFoundException('Cuestionario no encontrado');
+    return serializeQuizDetail(quiz, quiz.questions);
+  }
+
+  async withOwnedQuiz<T>(
+    userId: string,
+    id: string,
+    work: (manager: EntityManager, quiz: Quiz) => Promise<T>,
+  ): Promise<T> {
+    return this.dataSource.transaction(async (manager) => {
+      const quiz = await manager.getRepository(Quiz).findOne({
+        where: { id, authorId: userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!quiz) throw new NotFoundException('Cuestionario no encontrado');
+      if (quiz.isDemo) {
+        throw new ForbiddenException('El cuestionario demo es de solo lectura');
+      }
+      return work(manager, quiz);
+    });
+  }
+
+  async update(userId: string, id: string, dto: UpdateQuizDto) {
+    return this.withOwnedQuiz(userId, id, async (manager, quiz) => {
+      if (dto.title !== undefined) quiz.title = dto.title;
+      if (dto.description !== undefined) quiz.description = dto.description;
+      if (dto.coverImageUrl !== undefined)
+        quiz.coverImageUrl = dto.coverImageUrl;
+      quiz.updatedAt = new Date();
+      return serializeQuiz(await manager.save(Quiz, quiz));
+    });
+  }
+
+  async remove(userId: string, id: string): Promise<void> {
+    await this.withOwnedQuiz(userId, id, async (manager) => {
+      const questions = await manager.find(Question, { where: { quizId: id } });
+      await enqueueCleanup(
+        manager,
+        questions.flatMap((question) =>
+          question.imageStorageKey ? [question.imageStorageKey] : [],
+        ),
+      );
+      await manager.delete(Quiz, id);
+    });
   }
 }
