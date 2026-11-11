@@ -11,7 +11,7 @@ import {
 } from '../../modules/quizzes/entities/question.entity';
 import { QuestionOption } from '../../modules/quizzes/entities/question-option.entity';
 import { databaseOptions } from './database.options';
-import { PUNTO3_DEMO_AUTHOR_ID } from './punto3-demo-owner';
+import { authenticateDemoAccount } from './demo-account';
 
 export const DEMO_QUIZ_ID = '7ac9810a-b36c-4c85-8b58-b296434f0110';
 
@@ -22,6 +22,7 @@ const BINARY_IMAGE = 'efed51ad-1c55-4817-a164-c70f679e8001.png';
 export async function seed() {
   await ConfigModule.forRoot({ isGlobal: true });
   const config = new ConfigService();
+  const user = await authenticateDemoAccount();
   if (config.get('NODE_ENV') === 'production') {
     throw new Error('El seed de demo no se permite en producción');
   }
@@ -31,11 +32,22 @@ export async function seed() {
   await database.initialize();
   try {
     await database.transaction(async (manager) => {
+      const existing = await manager
+        .getRepository(Quiz)
+        .findOneBy({ id: DEMO_QUIZ_ID });
+      if (existing) {
+        if (!existing.isDemo)
+          await manager
+            .getRepository(Quiz)
+            .update({ id: existing.id }, { isDemo: true });
+        return;
+      }
       await manager.getRepository(Quiz).upsert(
         {
           id: DEMO_QUIZ_ID,
           title: 'Demo Punto 3: Verdadero / Falso',
-          authorId: PUNTO3_DEMO_AUTHOR_ID,
+          authorId: user.id,
+          isDemo: true,
         },
         ['id'],
       );
@@ -116,7 +128,7 @@ export async function seed() {
         ['id'],
       );
     });
-    const owner = process.env.LIVE_DEMO_AUTHOR_ID || PUNTO3_DEMO_AUTHOR_ID;
+    const owner = user.id;
     const folder = resolve(
       process.env.UPLOADS_DEST || './uploads',
       'questions',
@@ -130,6 +142,8 @@ export async function seed() {
       .png()
       .toFile(join(folder, BINARY_IMAGE));
     await database.transaction(async (manager) => {
+      if (await manager.getRepository(Quiz).existsBy({ id: BINARY_QUIZ_ID }))
+        return;
       await manager.getRepository(Quiz).upsert(
         {
           id: BINARY_QUIZ_ID,

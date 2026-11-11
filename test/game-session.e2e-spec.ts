@@ -21,6 +21,10 @@ import type { SessionSnapshotDto } from '../src/modules/game-session/dto/session
 import type { ParticipantDto } from '../src/modules/game-session/dto/participant.dto';
 import { DataSource } from 'typeorm';
 import { PUNTO3_DEMO_AUTHOR_ID } from '../src/shared/database/punto3-demo-owner';
+import { randomUUID } from 'node:crypto';
+import { APP_GUARD } from '@nestjs/core';
+import { JwtAuthGuard } from '../src/shared/guards/jwt-auth.guard';
+import { PublicInvitationsController } from '../src/modules/game-session/controllers/public-invitations.controller';
 
 /** Transport e2e: real Nest controllers/gateway/JWT/services, controlled repositories.
  * Real Postgres is covered separately by scripts/verify-phase-b-{rest,ws}.cjs.
@@ -38,10 +42,24 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
   let app: INestApplication;
   let base: string;
   let sockets: Socket[];
+  const ids = new Map<string, string>([
+    ['test-host-id', PUNTO3_DEMO_AUTHOR_ID],
+  ]);
+  function identity(alias: string) {
+    if (/^[\da-f-]{36}$/.test(alias)) return alias;
+    if (!ids.has(alias)) ids.set(alias, randomUUID());
+    return ids.get(alias)!;
+  }
 
   function jwt(sub = 'test-host-id', claims: Record<string, unknown> = {}) {
     return new JwtService().sign(
-      { sub, ...claims },
+      {
+        sub: identity(sub),
+        role: 'PROFESOR',
+        purpose: 'account',
+        credentialVersion: 1,
+        ...claims,
+      },
       {
         secret: config.JWT_SECRET,
         algorithm: 'HS256',
@@ -53,6 +71,26 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
   }
 
   beforeEach(async () => {
+    jest.spyOn(global, 'fetch').mockImplementation((_url, options) => {
+      const token = (
+        options?.headers as Record<string, string>
+      ).Authorization.slice(7);
+      const claims = new JwtService().verify<Record<string, unknown>>(token, {
+        secret: config.JWT_SECRET,
+      });
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: claims.sub,
+            role: claims.role,
+            active: true,
+            isSystem: false,
+            credentialVersion: claims.credentialVersion,
+            username: claims.name ?? 'Participante',
+          }),
+        ),
+      );
+    });
     sockets = [];
     const quizRows = [
       {
@@ -80,8 +118,9 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
     const sessionRows = new Map<string, Record<string, unknown>>();
     const module = await Test.createTestingModule({
       imports: [AuthModule],
-      controllers: [GameSessionController],
+      controllers: [GameSessionController, PublicInvitationsController],
       providers: [
+        { provide: APP_GUARD, useClass: JwtAuthGuard },
         GameSessionService,
         SessionManager,
         GameGateway,
@@ -149,6 +188,7 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
       socket.disconnect();
     }
     await app?.close();
+    jest.restoreAllMocks();
   });
 
   async function create() {
@@ -180,12 +220,15 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
     });
   }
 
-  async function connect(token: string | undefined = jwt()) {
+  async function connect(
+    token: string | undefined = jwt(),
+    guestToken?: string,
+  ) {
     const socket = io(`${base}/game`, {
       autoConnect: false,
       forceNew: true,
       transports: ['websocket'],
-      auth: token ? { token } : {},
+      auth: guestToken ? { guestToken } : token ? { token } : {},
       reconnection: false,
     });
     sockets.push(socket);
@@ -242,7 +285,7 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
       roomCode,
       sessionId: roomCode,
       status: 'LOBBY',
-      hostId: 'test-host-id',
+      hostId: identity('test-host-id'),
       quizId,
     });
     const joinRoute = `${prefix}/${roomCode}/join`;
@@ -253,7 +296,7 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
       .expect(201);
     expect(first.body).toEqual({
       added: true,
-      player: { userId: 'player', name: 'Player', connected: false },
+      player: { userId: identity('player'), name: 'Player', connected: false },
     });
     const second = await request(app.getHttpServer())
       .post(joinRoute)
@@ -266,8 +309,8 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
       .auth(jwt(), { type: 'bearer' })
       .expect(200);
     expect(participants.body.map((p: ParticipantDto) => p.userId)).toEqual([
-      'test-host-id',
-      'player',
+      identity('test-host-id'),
+      identity('player'),
     ]);
     await request(app.getHttpServer())
       .post(`${prefix}/${roomCode}/start`)
@@ -455,7 +498,8 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
     const state = await join(player, roomCode);
     expect(state.participants).toHaveLength(2);
     expect(
-      (await update).participants.find((p) => p.userId === 'player')?.connected,
+      (await update).participants.find((p) => p.userId === identity('player'))
+        ?.connected,
     ).toBe(true);
     const forbidden = next(player, 'error');
     player.emit('start-session', { roomCode });
@@ -535,15 +579,16 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
     const removed = next<{ participants: ParticipantDto[] }>(
       host,
       'participants-updated',
-      ({ participants }) => !participants.some((p) => p.userId === 'player'),
+      ({ participants }) =>
+        !participants.some((p) => p.userId === identity('player')),
     );
     player.disconnect();
     await removed;
     const reloaded = await connect(jwt('player'));
     const state = await join(reloaded, roomCode);
     expect(state.participants.map((p) => p.userId)).toEqual([
-      'test-host-id',
-      'player',
+      identity('test-host-id'),
+      identity('player'),
     ]);
   });
 
@@ -558,7 +603,9 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
       host,
       'participants-updated',
       ({ participants }) =>
-        participants.some((p) => p.userId === 'player' && !p.connected),
+        participants.some(
+          (p) => p.userId === identity('player') && !p.connected,
+        ),
     );
     player.disconnect();
     await offline;
@@ -566,8 +613,10 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
     const state = await join(reloaded, roomCode);
     expect(state.status).toBe('IN_PROGRESS');
     expect(state.startedAt).toBe(started.body.startedAt);
-    expect(state.participants.filter((p) => p.userId === 'player')).toEqual([
-      { userId: 'player', name: 'Participante', connected: true },
+    expect(
+      state.participants.filter((p) => p.userId === identity('player')),
+    ).toEqual([
+      { userId: identity('player'), name: 'Participante', connected: true },
     ]);
   });
 
@@ -585,7 +634,8 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
     );
     old.disconnect();
     expect(
-      (await update).participants.find((p) => p.userId === 'player')?.connected,
+      (await update).participants.find((p) => p.userId === identity('player'))
+        ?.connected,
     ).toBe(true);
     expect((await snapshot(roomCode)).participants).toHaveLength(2);
   });
@@ -606,7 +656,8 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
     const removed = next<{ participants: ParticipantDto[] }>(
       hostA,
       'participants-updated',
-      ({ participants }) => !participants.some((p) => p.userId === 'only-a'),
+      ({ participants }) =>
+        !participants.some((p) => p.userId === identity('only-a')),
     );
     player.disconnect();
     await removed;
@@ -618,7 +669,11 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
     expect(bUpdates).toEqual([
       {
         participants: [
-          { userId: 'test-host-id', name: 'Anfitrión', connected: true },
+          {
+            userId: identity('test-host-id'),
+            name: 'Anfitrión',
+            connected: true,
+          },
         ],
       },
     ]);
@@ -637,7 +692,7 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
       hostA,
       'participants-updated',
       ({ participants }) =>
-        !participants.some((p) => p.userId === 'switching-player'),
+        !participants.some((p) => p.userId === identity('switching-player')),
     );
     await join(player, b);
     await removed;
@@ -651,5 +706,152 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
     const started = next(player, 'session-started');
     await restStart(b);
     expect(await started).toMatchObject({ sessionId: b });
+  });
+
+  it('supports public guests with room-scoped identity, reconnect, safe rounds and revocation', async () => {
+    const roomCode = await create();
+    const other = await create();
+    const invitationId = (await snapshot(roomCode)).invitationId;
+    const route = `/kahoot-api/public/invitations/${invitationId}`;
+    const metadata = await request(app.getHttpServer()).get(route).expect(200);
+    expect(metadata.body).toEqual({
+      invitationId,
+      roomCode,
+      status: 'LOBBY',
+      name: 'Own quiz',
+    });
+    const response = await request(app.getHttpServer())
+      .post(`${route}/participants`)
+      .send({ username: '  Ada  ' })
+      .expect(201);
+    const guest = response.body as {
+      participantId: string;
+      guestToken: string;
+      username: string;
+    };
+    expect(guest.username).toBe('Ada');
+    await request(app.getHttpServer())
+      .post(`${route}/participants`)
+      .send({ username: 'ada' })
+      .expect(409);
+    await request(app.getHttpServer())
+      .post(`${route}/participants`)
+      .send({ username: 'Other', participantId: guest.participantId })
+      .expect(400);
+    await request(app.getHttpServer())
+      .get(`${prefix}/${roomCode}`)
+      .auth(guest.guestToken, { type: 'bearer' })
+      .expect(401);
+    await request(app.getHttpServer())
+      .get(`${prefix}/${roomCode}`)
+      .auth(jwt('other-teacher'), { type: 'bearer' })
+      .expect(404);
+    const host = await connect();
+    await join(host, roomCode);
+    const player = await connect(undefined, guest.guestToken);
+    const state = await join(player, roomCode);
+    expect(state).not.toHaveProperty('quizId');
+    expect(state).not.toHaveProperty('invitationId');
+    expect(state.participants).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId: guest.participantId, name: 'Ada' }),
+      ]),
+    );
+    for (const [event, payload] of [
+      ['start-session', { roomCode }],
+      ['next-question', { roomCode, questionId: quizId }],
+      ['join-session', { roomCode: other }],
+    ] as const) {
+      const error = next(player, 'error');
+      player.emit(event, payload);
+      expect(await error).toMatchObject({ code: 'FORBIDDEN' });
+    }
+    const offline = next<{ participants: ParticipantDto[] }>(
+      host,
+      'participants-updated',
+      ({ participants }) =>
+        participants.some(
+          (p) => p.userId === guest.participantId && !p.connected,
+        ),
+    );
+    player.disconnect();
+    await offline;
+    const reconnected = await connect(undefined, guest.guestToken);
+    expect(
+      (await join(reconnected, roomCode)).participants.filter(
+        (p) => p.userId === guest.participantId,
+      ),
+    ).toHaveLength(1);
+    const opened = next(reconnected, 'question-opened');
+    await restStart(roomCode);
+    expect((await opened).game).not.toHaveProperty('correctAnswer');
+    await request(app.getHttpServer())
+      .post(`${route}/participants`)
+      .send({ username: 'Late' })
+      .expect(400);
+    const forged = next(reconnected, 'error');
+    reconnected.emit('submit-answer', {
+      roomCode,
+      questionId: quizId,
+      answer: true,
+      playerId: identity('test-host-id'),
+    });
+    expect(await forged).toMatchObject({ code: 'FORBIDDEN' });
+    const accepted = next(reconnected, 'answer-accepted');
+    reconnected.emit('submit-answer', {
+      roomCode,
+      questionId: quizId,
+      answer: true,
+    });
+    await accepted;
+    const duplicate = next(reconnected, 'error');
+    reconnected.emit('submit-answer', {
+      roomCode,
+      questionId: quizId,
+      answer: false,
+    });
+    expect(await duplicate).toMatchObject({ code: 'DUPLICATE_ANSWER' });
+    const manager = app.get(SessionManager);
+    manager.requireSession(roomCode).liveGame!.close();
+    expect(
+      manager
+        .requireSession(roomCode)
+        .liveGame!.scores.get(guest.participantId),
+    ).toBe(1);
+    const finished = next(reconnected, 'game-finished');
+    host.emit('next-question', { roomCode, questionId: quizId });
+    await finished;
+    expect(() => manager.verifyGuest(guest.guestToken)).toThrow();
+    await request(app.getHttpServer()).get(route).expect(404);
+  });
+
+  it('rejects ambiguous handshakes and rechecks account revocation on administrative events', async () => {
+    const roomCode = await create();
+    const ambiguous = io(`${base}/game`, {
+      autoConnect: false,
+      auth: { token: jwt(), guestToken: 'fake' },
+      transports: ['websocket'],
+      reconnection: false,
+    });
+    sockets.push(ambiguous);
+    const disconnected = next(ambiguous, 'disconnect');
+    ambiguous.connect();
+    await disconnected;
+    const host = await connect();
+    await join(host, roomCode);
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce(new Response('', { status: 401 }));
+    const denied = next(host, 'error');
+    host.emit('start-session', { roomCode });
+    expect(await denied).toMatchObject({ code: 'UNAUTHENTICATED' });
+    expect(app.get(SessionManager).requireSession(roomCode).status).toBe(
+      'LOBBY',
+    );
+    jest.spyOn(global, 'fetch').mockRejectedValueOnce(new Error('offline'));
+    await request(app.getHttpServer())
+      .get(`${prefix}/${roomCode}`)
+      .auth(jwt(), { type: 'bearer' })
+      .expect(503);
   });
 });

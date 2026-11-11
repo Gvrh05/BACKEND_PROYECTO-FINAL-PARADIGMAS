@@ -4,14 +4,19 @@ import {
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
+  UnauthorizedException,
+  ConflictException,
+  HttpException,
+  OnModuleDestroy,
 } from '@nestjs/common';
-import { randomInt } from 'node:crypto';
+import { randomInt, randomUUID, randomBytes, createHash } from 'node:crypto';
 import type { LiveGame } from './live-game';
 import { GamePhase } from '../dto/game-state.dto';
 import { ParticipantDto } from '../dto/participant.dto';
 import { SessionStatus } from '../entities/game-session.entity';
 
 export interface SessionPlayer extends ParticipantDto {
+  guest?: boolean;
   id: string;
   score: number; // Reserved for Punto 4; not calculated here.
   socketId: string;
@@ -19,12 +24,18 @@ export interface SessionPlayer extends ParticipantDto {
 }
 
 export interface PlayerInput {
+  guest?: boolean;
   userId: string;
   name?: string;
   socketId?: string;
 }
 
 export interface ActiveSession {
+  id: string;
+  invitationId: string;
+  name: string;
+  expiresAt: number;
+  acceptingGuests: boolean;
   pin: string;
   quizId: string;
   hostId: string;
@@ -39,15 +50,137 @@ export interface ActiveSession {
 }
 
 @Injectable()
-export class SessionManager {
+export class SessionManager implements OnModuleDestroy {
   private readonly sessions = new Map<string, ActiveSession>();
   private readonly reservations = new Set<string>();
+  private readonly credentials = new Map<
+    string,
+    {
+      sessionId: string;
+      roomCode: string;
+      sub: string;
+      name: string;
+      expiresAt: number;
+    }
+  >();
+  private readonly limits = new Map<string, { count: number; until: number }>();
+  private readonly cleanup = setInterval(() => this.sweep(), 60000).unref();
+
+  onModuleDestroy() {
+    clearInterval(this.cleanup);
+    this.credentials.clear();
+    this.limits.clear();
+  }
+
+  private sweep() {
+    const now = Date.now();
+    for (const [hash, value] of this.credentials)
+      if (
+        value.expiresAt <= now ||
+        this.sessions.get(value.roomCode)?.id !== value.sessionId
+      )
+        this.credentials.delete(hash);
+    for (const [key, value] of this.limits)
+      if (value.until <= now) this.limits.delete(key);
+  }
+
+  rateLimit(key: string, maximum = 60) {
+    this.sweep();
+    const value = this.limits.get(key) ?? {
+      count: 0,
+      until: Date.now() + 60000,
+    };
+    if (this.limits.size >= 10000 && !this.limits.has(key))
+      throw new HttpException('Demasiadas solicitudes', 429);
+    this.limits.set(key, value);
+    if (++value.count > maximum)
+      throw new HttpException('Demasiadas solicitudes', 429);
+  }
+
+  invitation(invitationId: string) {
+    const session = [...this.sessions.values()].find(
+      (value) =>
+        value.invitationId === invitationId &&
+        value.expiresAt > Date.now() &&
+        value.status !== SessionStatus.FINISHED,
+    );
+    if (!session)
+      throw new NotFoundException('Invitación inexistente o caducada');
+    return session;
+  }
+
+  createGuest(invitationId: string, username: unknown) {
+    const session = this.invitation(invitationId);
+    this.rateLimit(`room:${session.id}`, 30);
+    if (session.status !== SessionStatus.LOBBY || !session.acceptingGuests)
+      throw new BadRequestException('La sala ya inició');
+    if (
+      typeof username !== 'string' ||
+      !username.trim() ||
+      username.trim().length > 80
+    )
+      throw new BadRequestException('Nombre requerido de 1 a 80 caracteres');
+    const name = username.trim();
+    if (
+      [...session.players.values()].some(
+        (player) =>
+          player.name.toLocaleLowerCase() === name.toLocaleLowerCase(),
+      )
+    )
+      throw new ConflictException('El nombre ya está en uso');
+    if (session.players.size >= 500) throw new HttpException('Sala llena', 429);
+    const sub = randomUUID();
+    const guestToken = randomBytes(32).toString('base64url');
+    this.credentials.set(this.hash(guestToken), {
+      sessionId: session.id,
+      roomCode: session.pin,
+      sub,
+      name,
+      expiresAt: session.expiresAt,
+    });
+    this.addPlayer(session.pin, { userId: sub, name, guest: true });
+    return {
+      participantId: sub,
+      username: name,
+      roomCode: session.pin,
+      guestToken,
+      invitationId,
+    };
+  }
+
+  verifyGuest(token: unknown) {
+    if (typeof token !== 'string' || !/^[\w-]{43}$/.test(token))
+      throw new UnauthorizedException('Credencial invitado inválida');
+    const hash = this.hash(token);
+    const credential = this.credentials.get(hash);
+    const session = credential && this.sessions.get(credential.roomCode);
+    if (
+      !credential ||
+      !session ||
+      session.id !== credential.sessionId ||
+      session.status === SessionStatus.FINISHED ||
+      credential.expiresAt <= Date.now()
+    ) {
+      this.credentials.delete(hash);
+      throw new UnauthorizedException('Credencial invitado caducada');
+    }
+    return { ...credential };
+  }
+
+  private hash(token: string) {
+    return createHash('sha256').update(token).digest('hex');
+  }
 
   /** Reserve privately until the service has persisted the session. */
   reserveSession(hostId: string, quizId: string): ActiveSession {
     const pin = this.generatePin();
     this.reservations.add(pin);
     const session: ActiveSession = {
+      id: randomUUID(),
+      invitationId: randomBytes(32).toString('base64url'),
+      name: 'Partida',
+      expiresAt: Date.now() + 12 * 60 * 60 * 1000,
+      acceptingGuests: true,
       pin,
       quizId,
       hostId,
@@ -141,7 +274,8 @@ export class SessionManager {
     player.connected = false;
     player.socketId = '';
     if (userId === session.hostId) session.hostSocketId = '';
-    if (session.status === SessionStatus.LOBBY) session.players.delete(userId);
+    if (session.status === SessionStatus.LOBBY && !player.guest)
+      session.players.delete(userId);
   }
 
   listPlayers(pin: string): ParticipantDto[] {
@@ -174,6 +308,8 @@ export class SessionManager {
   }
 
   removeSession(pin: string): boolean {
+    for (const [hash, value] of this.credentials)
+      if (value.roomCode === pin) this.credentials.delete(hash);
     return this.sessions.delete(pin);
   }
 
@@ -188,6 +324,7 @@ export class SessionManager {
   private newPlayer(input: PlayerInput): SessionPlayer {
     return {
       id: input.userId,
+      guest: input.guest,
       userId: input.userId,
       name: input.name?.trim() || 'Participante',
       connected: false,

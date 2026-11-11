@@ -18,14 +18,14 @@ Incorporar participantes autenticados en salas por código con semántica idempo
 - **THEN** el servidor no usa ese dato para registrar ni modificar otra identidad
 
 ### Requirement: Unión WS autenticada
-El namespace `/game` SHALL verificar `handshake.auth.token` con las mismas reglas JWT de REST y desconectar el socket inválido. Tras autenticar, `join-session { roomCode }` SHALL unir el socket únicamente a esa sala, devolver `session-state { sessionId, roomCode, status, hostId, quizId, participants }` al socket y notificar `participants-updated { participants }` a esa sala. La identidad SHALL proceder del handshake, no del payload.
+El namespace `/game` SHALL aceptar exclusivamente `handshake.auth.token` de cuenta con las mismas reglas de REST o `handshake.auth.guestToken` temporal válido, nunca ambos. SHALL desconectar sockets inválidos. Tras autenticar, `join-session { roomCode }` SHALL unir el socket únicamente a la sala autorizada y notificar `participants-updated { participants }` a esa sala. La identidad SHALL proceder del handshake, no del payload. El snapshot de invitado SHALL omitir hostId, quizId y respuestas correctas antes del cierre; la cuenta anfitriona recibe su snapshot privado.
 
 #### Scenario: Unión válida por socket
 - **WHEN** un socket autenticado emite `join-session` con un código válido en LOBBY
 - **THEN** recibe su snapshot y los sockets de esa sala reciben la lista actualizada, sin eventos para otra sala
 
 #### Scenario: Handshake inválido
-- **WHEN** un socket conecta sin token o con JWT inválido
+- **WHEN** un socket conecta sin credencial, con credencial inválida o con token y guestToken simultáneos
 - **THEN** se desconecta y no puede unirse ni iniciar salas
 
 ### Requirement: Errores y restricciones de fase
@@ -40,7 +40,7 @@ Un código con formato inválido SHALL dar REST 400 o WS `error { code: 'INVALID
 - **THEN** la página muestra un ErrorBanner rojo específico sin navegar a una sala incorrecta
 
 ### Requirement: Interfaz de unión
-El formulario SHALL validar seis dígitos conservando el código como string y navegar al lobby del jugador tras una unión correcta. SHALL usar el JWT local y redirigir a `/login` si falta, sin crear un flujo de autenticación nuevo.
+El flujo manual autenticado SHALL validar seis dígitos conservando el código como string. El flujo público `/join/:invitationId` SHALL permitir entrar sin JWT de cuenta pidiendo solo un nombre y guardando la credencial temporal por invitación en sessionStorage.
 
 #### Scenario: Unión desde móvil
 - **WHEN** un jugador autenticado introduce seis dígitos válidos y pulsa Unirse

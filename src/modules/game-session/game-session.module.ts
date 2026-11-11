@@ -8,6 +8,7 @@ import { GameGateway } from './gateways/game.gateway';
 import { SessionManager } from './engine/session-manager';
 import { GameSessionController } from './controllers/game-session.controller';
 import { GameSessionEvents } from './gateways/game-session.events';
+import { PublicInvitationsController } from './controllers/public-invitations.controller';
 
 @Module({
   imports: [
@@ -21,7 +22,7 @@ import { GameSessionEvents } from './gateways/game-session.events';
     SessionManager,
     GameSessionEvents,
   ],
-  controllers: [GameSessionController],
+  controllers: [GameSessionController, PublicInvitationsController],
   exports: [GameSessionService, SessionManager],
 })
 export class GameSessionModule {}

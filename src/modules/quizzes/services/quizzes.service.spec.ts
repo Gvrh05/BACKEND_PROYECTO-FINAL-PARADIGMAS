@@ -1,7 +1,6 @@
 import { DataSource } from 'typeorm';
 import { Quiz } from '../entities/quiz.entity';
 import { QuizzesService } from './quizzes.service';
-import { PUNTO3_DEMO_AUTHOR_ID } from '../../../shared/database/punto3-demo-owner';
 
 describe('QuizzesService additive ownership queries against the authoring schema', () => {
   const host = '7ac9810a-b36c-4c85-8b58-b296434f0300';
@@ -76,15 +75,12 @@ describe('QuizzesService additive ownership queries against the authoring schema
     );
   });
 
-  it('keeps the signed DEV host compatible but never enables its alias in production', async () => {
+  it('rejects legacy DEV identities in every environment', async () => {
     const previous = process.env.NODE_ENV;
     try {
       process.env.NODE_ENV = 'development';
       await service.findAllByOwner('test-host-id');
-      expect(repository.find).toHaveBeenCalledWith({
-        where: { authorId: PUNTO3_DEMO_AUTHOR_ID },
-        order: { createdAt: 'ASC' },
-      });
+      expect(repository.find).not.toHaveBeenCalled();
       jest.clearAllMocks();
       process.env.NODE_ENV = 'production';
       await expect(

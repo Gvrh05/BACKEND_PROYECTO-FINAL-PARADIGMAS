@@ -13,7 +13,10 @@ export class ResultsController {
   }
 
   @Post('export')
-  exportReport(@Body() exportReportDto: ExportReportDto) {
-    return this.resultsService.exportReport(exportReportDto);
+  exportReport(
+    @Body() exportReportDto: ExportReportDto,
+    @CurrentUser('userId') userId: string,
+  ) {
+    return this.resultsService.exportReport(exportReportDto, userId);
   }
 }

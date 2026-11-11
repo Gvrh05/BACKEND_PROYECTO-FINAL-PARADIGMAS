@@ -1,5 +1,7 @@
 # Profelink Kahoot API
 
+Guía de cuentas, bootstrap, QR y ejecución: [teacher-guests-deployment](docs/teacher-guests-deployment.md).
+
 Backend NestJS con PostgreSQL 16 y migraciones explícitas de TypeORM. El servicio
 de identidad es externo; su base y sus usuarios no se modifican aquí.
 
@@ -30,9 +32,10 @@ Revisa siempre el SQL antes de aplicarlo. `migration:revert` es destructivo: ús
 ## Contenedor y despliegue
 
 Las rutas privadas requieren `Authorization: Bearer <accessToken>` del servicio de
-identidad existente. Se valida firma HS256, expiración cuando está presente y `sub`
-UUID; `authorId` no es editable. Cualquier usuario autenticado administra solo lo
-suyo, sin una nueva restricción por rol. Un secreto ausente impide el arranque.
+identidad existente. Se validan firma HS256, audiencia, expiración obligatoria,
+propósito `account`, `sub` UUID y rol MASTER/PROFESOR, además de la actividad y
+versión de credenciales mediante Auth en cada operación. Auth no disponible
+produce 503. `authorId` no es editable y MASTER no evita ownership.
 
 ```powershell
 pnpm install --frozen-lockfile
@@ -142,15 +145,16 @@ la URL serializada es pública y no requiere Bearer.
 
 1. Inicia un PostgreSQL de desarrollo y crea dos bases, una para Auth y otra para Kahoot. Usa el repositorio de Auth en su rama `develop`.
 2. Configura `DATABASE_URL`, `JWT_SECRET` y `JWT_AUDIENCE=kahoot-api` en Kahoot. En Auth configura su base, la misma clave y audiencia. En ambos servicios permite el origen de React mediante `CORS_ORIGIN`.
-3. Instala las dependencias con `pnpm install`, ejecuta `pnpm migration:run` en Kahoot e inicia ambas APIs con `pnpm start:dev`. Auth usa el puerto 3001 por defecto.
-4. Crea una cuenta de anfitrión y otra de participante con `POST /auth/register`. Para cargar el quiz de ejemplo, configura `LIVE_DEMO_AUTHOR_ID` con el UUID de la cuenta anfitriona y ejecuta `pnpm seed` en Kahoot. Esto agrega un quiz Verdadero/Falso de dos rondas con una imagen generada.
-5. En el frontend configura `VITE_API_URL` y `VITE_AUTH_API_URL` si usas puertos distintos de los valores de ejemplo. Inícialo con `pnpm dev`. Entra como anfitrión para crear sala, y como participante en una ventana privada para usar el PIN.
+3. Instala las dependencias con `pnpm install`, ejecuta `pnpm migration:run` en Kahoot y el bootstrap interno `pnpm bootstrap:master` en Auth antes de iniciar ambas APIs con `pnpm start:dev`. Auth usa el puerto 3001 por defecto.
+4. Entra como MASTER y crea docentes desde Usuarios. El registro público está retirado. Como docente crea un quiz Verdadero/Falso y una sala. Los participantes no necesitan cuenta.
+5. En el frontend usa las URLs relativas de `.env.example` e inicia `pnpm dev`. Abre el enlace del lobby en una ventana privada e introduce un nombre. Consulta la guía de despliegue para QR desde teléfonos.
 6. Configura el destino OTLP e importa el tablero siguiendo [Grafana Cloud](docs/grafana/README.md).
 
 ## Quiz demo y ejecución local con Compose
 
-Auth usa **usuario y contraseña**, sin correo. El seed crea (o valida) la cuenta
-`profesor_test` con `DEMO_USER_PASSWORD`. Opcionalmente coloca los PNG `q1.png` a
+Auth usa **usuario y contraseña**, sin correo. Su bootstrap provisiona la cuenta
+configurada por `DEMO_USER_USERNAME` (default `profesor_test`) y el seed inicia sesión
+con `DEMO_USER_PASSWORD`, sin crear cuentas. Opcionalmente coloca los PNG `q1.png` a
 `q10.png` en `public/seeds/`; las preguntas sin archivo se crean sin imagen.
 `quiz-seed` crea el quiz **Evaluación de Cultura General** con diez preguntas de
 opción múltiple. El seed es idempotente y no modifica quizzes ya existentes.
@@ -202,6 +206,13 @@ tiempo y fallos; no usar ese modo en producción.
 ---
 
 ## Integración de `feature/punto3` con `develop`
+
+> **Archivo histórico:** el contenido restante documenta etapas anteriores y no
+> debe usarse como guía de ejecución actual. Los tokens manuales/DEV, el registro
+> público y los verificadores phase-b han sido reemplazados por Auth real y
+> `scripts/verify-teacher-guests.cjs`. Prevalecen la guía
+> [teacher-guests-deployment](docs/teacher-guests-deployment.md), los contratos
+> actuales y las specs de cuentas e invitados.
 
 La guía histórica del Punto 3 más abajo describe el esquema previo. Tras integrar
 quizzes real, **prevalece esta nota**:

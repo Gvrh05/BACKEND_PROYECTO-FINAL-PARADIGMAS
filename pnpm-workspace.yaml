@@ -1,2 +1,4 @@
-onlyBuiltDependencies:
-  - sharp
+allowBuilds:
+  '@parcel/watcher': true
+  protobufjs: true
+  sharp: true

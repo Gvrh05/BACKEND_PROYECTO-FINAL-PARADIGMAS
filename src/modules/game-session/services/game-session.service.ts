@@ -73,9 +73,11 @@ export class GameSessionService {
 
     for (let attempt = 0; attempt < 10; attempt++) {
       const session = this.sessionManager.reserveSession(hostId, quizId);
+      session.name = quiz.title;
       try {
         await this.sessions.save(
           this.sessions.create({
+            id: session.id,
             roomCode: session.pin,
             quizId,
             hostId,
@@ -110,6 +112,36 @@ export class GameSessionService {
           game: session.liveGame.snapshot(userId),
         }),
     };
+  }
+
+  assertHost(roomCode: string, userId: string) {
+    if (this.sessionManager.requireSession(roomCode).hostId !== userId)
+      throw new NotFoundException('Sala inexistente');
+  }
+
+  verifyGuest(token: unknown) {
+    return this.sessionManager.verifyGuest(token);
+  }
+
+  publicInvitation(invitationId: string, ip: string) {
+    this.sessionManager.rateLimit(`ip:${ip}`);
+    const session = this.sessionManager.invitation(invitationId);
+    return {
+      invitationId,
+      roomCode: session.pin,
+      status: session.status,
+      name: session.name,
+    };
+  }
+
+  createGuest(invitationId: string, username: unknown, ip: string) {
+    this.sessionManager.rateLimit(`ip:${ip}`);
+    const guest = this.sessionManager.createGuest(invitationId, username);
+    this.events.participantsUpdated(
+      guest.roomCode,
+      this.listParticipants(guest.roomCode),
+    );
+    return guest;
   }
 
   async listAvailableQuizzes(hostId: string) {
@@ -169,7 +201,14 @@ export class GameSessionService {
   private async startSessionCore(roomCode: string, hostId: string) {
     return this.exclusive(roomCode, async () => {
       const lobby = this.sessionManager.assertCanStart(roomCode, hostId);
-      const game = await this.prepareGame(hostId, lobby.quizId);
+      lobby.acceptingGuests = false;
+      let game: LiveGame;
+      try {
+        game = await this.prepareGame(hostId, lobby.quizId);
+      } catch (error) {
+        lobby.acceptingGuests = true;
+        throw error;
+      }
       const startedAt = new Date();
       try {
         const result = await this.sessions.update(
@@ -179,6 +218,7 @@ export class GameSessionService {
         if (result.affected !== 1)
           throw new BadRequestException('La sala no está en LOBBY');
       } catch (error) {
+        lobby.acceptingGuests = true;
         await this.releaseGame(game);
         throw error;
       }
@@ -428,6 +468,7 @@ export class GameSessionService {
   private summary(session: ActiveSession) {
     return {
       sessionId: session.pin,
+      invitationId: session.invitationId,
       roomCode: session.pin,
       status: session.status,
       hostId: session.hostId,
