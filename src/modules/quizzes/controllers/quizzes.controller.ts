@@ -32,6 +32,11 @@ export class QuizzesController {
     return this.quizzesService.create(user.userId, createQuizDto);
   }
 
+  @Post('pokemon')
+  createPokemonQuiz(@CurrentUser() user: AuthenticatedUser) {
+    return this.quizzesService.createPokemonQuiz(user.userId);
+  }
+
   @Get()
   findAll(@CurrentUser() user: AuthenticatedUser) {
     return this.quizzesService.findAll(user.userId);

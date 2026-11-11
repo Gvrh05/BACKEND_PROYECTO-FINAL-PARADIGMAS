@@ -10,12 +10,27 @@ import { Quiz } from '../entities/quiz.entity';
 import { serializeQuiz, serializeQuizDetail } from '../dto/resources';
 import { UpdateQuizDto } from '../dto/update-quiz.dto';
 import { Question } from '../entities/question.entity';
+import { QuestionKind } from '../entities/question.entity';
+import { QuestionOption } from '../entities/question-option.entity';
 import { enqueueCleanup } from './enqueue-cleanup';
 import { quizAuthorId } from '../../../shared/database/punto3-demo-owner';
+import { PokeApiService, type PokemonFact } from './poke-api.service';
+
+const TYPE_NAMES: Record<string, string> = {
+  bug: 'bicho', dark: 'siniestro', dragon: 'dragón', electric: 'eléctrico',
+  fairy: 'hada', fighting: 'lucha', fire: 'fuego', flying: 'volador',
+  ghost: 'fantasma', grass: 'planta', ground: 'tierra', ice: 'hielo',
+  normal: 'normal', poison: 'veneno', psychic: 'psíquico', rock: 'roca',
+  steel: 'acero', water: 'agua',
+};
+const FALSE_TYPES = ['fire', 'water', 'electric', 'grass', 'psychic', 'ghost'];
 
 @Injectable()
 export class QuizzesService {
-  constructor(private readonly dataSource: DataSource) {}
+  constructor(
+    private readonly dataSource: DataSource,
+    private readonly pokeApi: PokeApiService,
+  ) {}
 
   async findOneByOwner(quizId: string, ownerId: string): Promise<Quiz | null> {
     const authorId = quizAuthorId(ownerId);
@@ -48,6 +63,43 @@ export class QuizzesService {
       coverImageUrl: dto.coverImageUrl ?? null,
     });
     return serializeQuiz(quiz);
+  }
+
+  async createPokemonQuiz(userId: string) {
+    // Fetch before the transaction: no partial quiz is stored if PokéAPI is down.
+    const facts = await this.pokeApi.getStarterFacts();
+    const quiz = await this.dataSource.transaction(async (manager) => {
+      const created = await manager.save(Quiz, {
+        authorId: userId,
+        title: 'Pokémon: Verdadero o Falso',
+        description: 'Quiz generado con datos de PokéAPI. Las preguntas quedan guardadas para jugar sin conexión a PokéAPI.',
+      });
+      for (const [index, fact] of facts.entries()) {
+        const correct = index % 2 === 0;
+        const statedType = correct ? fact.primaryType : this.falseType(fact);
+        const question = await manager.save(Question, {
+          quizId: created.id,
+          kind: QuestionKind.TRUE_FALSE,
+          questionText: `¿${this.displayName(fact.name)} es de tipo ${TYPE_NAMES[statedType] ?? statedType}?`,
+          timeLimitSeconds: 20,
+          points: 1000,
+        });
+        await manager.save(QuestionOption, [
+          { questionId: question.id, position: 0, text: 'Verdadero', isCorrect: correct },
+          { questionId: question.id, position: 1, text: 'Falso', isCorrect: !correct },
+        ]);
+      }
+      return created;
+    });
+    return serializeQuiz(quiz);
+  }
+
+  private falseType(fact: PokemonFact): string {
+    return FALSE_TYPES.find((type) => type !== fact.primaryType) ?? 'normal';
+  }
+
+  private displayName(value: string): string {
+    return value.charAt(0).toUpperCase() + value.slice(1);
   }
 
   async findAll(userId: string) {

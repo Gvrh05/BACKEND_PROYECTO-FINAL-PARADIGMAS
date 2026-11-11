@@ -69,6 +69,11 @@ Pruebas, aislamiento de esquemas y JWT de prueba: [docs/testing.md](docs/testing
 Contrato: [docs/openapi.json](docs/openapi.json). Todas las rutas siguientes llevan
 el prefijo `/kahoot-api` y requieren Bearer:
 
+`POST /quizzes/pokemon` crea para el docente diez preguntas Verdadero/Falso de
+Pokémon usando datos de PokéAPI. La consulta externa se realiza una sola vez al
+generar (con caché de una hora); tipos, respuestas y preguntas se guardan en la
+base, por lo que la partida no depende de PokéAPI.
+
 | Recurso                                  | Operaciones                                                    |
 | ---------------------------------------- | -------------------------------------------------------------- |
 | `/quizzes`                               | POST crear (201), GET listar propios y demo compartido (200)   |
