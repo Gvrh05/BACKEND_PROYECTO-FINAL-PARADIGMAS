@@ -5,18 +5,22 @@ const { randomBytes } = require('node:crypto');
 const { io } = require('socket.io-client');
 
 const origin = (process.env.VERIFY_ORIGIN || 'http://localhost:5173').replace(/\/$/, '');
+const authBase = (process.env.VERIFY_AUTH_URL || `${origin}/auth`).replace(/\/$/, '');
+const apiBase = (process.env.VERIFY_API_URL || `${origin}/kahoot-api`).replace(/\/$/, '');
+const wsBase = (process.env.VERIFY_WS_URL || origin).replace(/\/$/, '');
 const sockets = [];
 const created = [];
 let master;
 async function request(path, { method = 'GET', token, body, status = 200 } = {}) {
-  const response = await fetch(origin + path, {
+  const url = path.startsWith('/auth/') ? authBase + path.slice('/auth'.length) : path.startsWith('/kahoot-api/') ? apiBase + path.slice('/kahoot-api'.length) : origin + path;
+  const response = await fetch(url, {
     method,
     headers: { ...(body && { 'content-type': 'application/json' }), ...(token && { authorization: `Bearer ${token}` }) },
     ...(body && { body: JSON.stringify(body) }),
     signal: AbortSignal.timeout(10000),
   });
   const data = await response.text();
-  assert([status].flat().includes(response.status), `${method} ${path}: expected ${status}, got ${response.status}: ${data}`);
+  assert([status].flat().includes(response.status), `${method} ${path}: expected ${status}, got ${response.status}`);
   return data ? JSON.parse(data) : undefined;
 }
 function event(socket, name, timeout = 12000) {
@@ -27,7 +31,7 @@ function event(socket, name, timeout = 12000) {
   });
 }
 async function connect(auth) {
-  const socket = io(origin + '/game', { auth, autoConnect: false, reconnection: false, timeout: 10000 });
+  const socket = io(wsBase + '/game', { auth, autoConnect: false, reconnection: false, timeout: 10000 });
   sockets.push(socket);
   const connected = event(socket, 'connect');
   socket.connect();

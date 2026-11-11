@@ -11,13 +11,31 @@
   "title": "ProfeLink · Partida en vivo",
   "uid": "profelink-live-gameplay",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "time": {
     "from": "now-30m",
     "to": "now"
   },
   "refresh": "10s",
   "panels": [
+    {
+      "id": 6,
+      "title": "Auth: peticiones por código HTTP",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "refId": "A", "expr": "sum by (http_response_status_code) (increase(auth_http_requests_total[5m]))", "legendFormat": "HTTP {{http_response_status_code}}" }]
+    },
+    {
+      "id": 7,
+      "title": "Frontend HTTP disponible (1=sí, 0=no)",
+      "description": "Probe desde Backend. No data significa que no hay señal, no equivale a 0 ni prueba caída.",
+      "type": "stat",
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "targets": [{ "refId": "A", "expr": "min(frontend_http_up)" }],
+      "fieldConfig": { "defaults": { "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] }
+    },
     {
       "id": 1,
       "title": "Salas activas",

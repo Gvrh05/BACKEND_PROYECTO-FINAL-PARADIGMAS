@@ -1,5 +1,8 @@
 # Grafana Cloud para partida en vivo
 
+Guía actual con las URLs públicas, CORS, Netlify y consultas:
+[Railway + Netlify + Grafana Cloud](railway-netlify.md).
+
 En Grafana Cloud, abre la instancia del equipo y selecciona **OpenTelemetry → Configure**. Copia el endpoint base OTLP que termina en `/otlp` y el valor del encabezado de autenticación. Configura estas variables en el proceso de la API o en su `.env` ignorado por Git.
 
 ```dotenv
@@ -9,7 +12,7 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-REGION.grafana.net/otlp
 OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic%20CREDENCIAL
 OTEL_METRICS_EXPORTER=otlp
-OTEL_TRACES_EXPORTER=otlp
+OTEL_TRACES_EXPORTER=none
 OTEL_METRIC_EXPORT_INTERVAL=10000
 ```
 

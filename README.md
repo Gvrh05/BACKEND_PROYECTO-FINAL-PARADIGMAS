@@ -17,10 +17,18 @@ Para levantar toda la infraestructura (Auth, API, Frontend, PostgreSQL) y ver la
 4. El frontend estará disponible en `http://localhost:45173` (o el puerto configurado en tu `.env`).
 
 ## Cuentas de Prueba
-- **Cuenta MASTER (Demo):** Usuario `profesor_test` / Contraseña `853b81573507dabca43b7696ba64f54de39e`
+- **Cuenta MASTER (Demo):** usuario configurado en `DEMO_USER_USERNAME` (default `profesor_test`). La contraseña es `DEMO_USER_PASSWORD` del entorno privado; no publicarla en Git.
 - **Invitado:** No requiere cuenta. Al crear una sala, escanea el QR o copia el enlace, pon tu nombre y entra.
 
 ## Demostración de Juego
+
+El demo incluye diez ilustraciones locales. Volver a ejecutar `quiz-seed` completa
+solo imágenes ausentes del demo existente, sin cambiar preguntas, respuestas ni
+imágenes ya asociadas. Sigue siendo de solo lectura; para jugar crear un quiz
+Verdadero/Falso. Detalles: [imágenes demo](public/seeds/README.md).
+
+Configuración pública, CORS y Grafana Cloud:
+[guía Railway/Netlify](docs/grafana/railway-netlify.md).
 1. Inicia sesión como `profesor_test`.
 2. Ve a **Quices** y verifica que el "Quiz Demo" tiene el botón de borrar deshabilitado.
 3. Crea un nuevo cuestionario con preguntas Verdadero/Falso.

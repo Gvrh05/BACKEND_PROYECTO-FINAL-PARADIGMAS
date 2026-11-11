@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { copyFile, mkdir, stat } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { DataSource } from 'typeorm';
 import sharp from 'sharp';
@@ -8,6 +9,7 @@ import { QuestionOption } from '../modules/quizzes/entities/question-option.enti
 import { Quiz } from '../modules/quizzes/entities/quiz.entity';
 import { getDatabaseOptions } from '../shared/database/database.config';
 import { authenticateDemoAccount } from '../shared/database/demo-account';
+import { missingDemoImagePatch } from './demo-image-patch';
 
 const quizTitle = 'Evaluación de Cultura General';
 interface DemoQuestion {
@@ -108,8 +110,24 @@ async function copySeedImages(): Promise<Array<number | null>> {
     if (imageSize <= 0 || imageSize > maxSize) {
       throw new Error(`${filename} debe pesar entre 1 byte y ${maxSize} bytes`);
     }
-    await copyFile(source, destination);
-    sizes.push(imageSize);
+    try {
+      await copyFile(source, destination, constants.COPYFILE_EXCL);
+      sizes.push(imageSize);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      const existingImage = sharp(destination, { limitInputPixels: 25000000 });
+      if ((await existingImage.metadata()).format !== 'png')
+        throw new Error(
+          `Imagen existente ${filename} inválida; no se sobrescribió`,
+        );
+      await existingImage.stats();
+      const size = (await stat(destination)).size;
+      if (size <= 0 || size > maxSize)
+        throw new Error(
+          `Imagen existente ${filename} fuera de límite; no se sobrescribió`,
+        );
+      sizes.push(size);
+    }
   }
   return sizes;
 }
@@ -141,7 +159,30 @@ async function seed(): Promise<void> {
         if (!existing.isDemo) {
           await quizzes.update({ id: existing.id }, { isDemo: true });
         }
-        console.log(`Seed ya aplicado: ${quizTitle} (${existing.id})`);
+        let addedImages = 0;
+        const repository = manager.getRepository(Question);
+        for (const [index, definition] of questions.entries()) {
+          const question = await repository.findOne({
+            where: {
+              quizId: existing.id,
+              questionText: definition.questionText,
+            },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (!question) continue; // Never match by position or modify a different question.
+          const patch = missingDemoImagePatch(
+            question,
+            index,
+            imageSizes[index],
+          );
+          if (patch) {
+            await repository.update({ id: question.id }, patch);
+            addedImages++;
+          }
+        }
+        console.log(
+          `Seed ya aplicado: ${quizTitle} (${existing.id}); ${addedImages} imágenes añadidas sin sobrescribir contenido.`,
+        );
         return;
       }
 

@@ -4,11 +4,12 @@ import { LoggingInterceptor } from './shared/interceptors/logging.interceptor';
 import { APP_CONFIG } from './shared/utils/constants';
 import { static as expressStatic } from 'express';
 import { resolve } from 'node:path';
+import { corsOrigins } from './shared/cors';
 
 /** Apply the same HTTP configuration in production and integration tests. */
 export function configureApp(app: INestApplication): void {
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: corsOrigins(),
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
     credentials: true,
   });

@@ -8,6 +8,7 @@ import { QuizzesModule } from './modules/quizzes/quizzes.module';
 import { GameSessionModule } from './modules/game-session/game-session.module';
 import { ResultsModule } from './modules/results/results.module';
 import { JwtAuthGuard } from './shared/guards/jwt-auth.guard';
+import { FrontendHealthService } from './shared/frontend-health.service';
 import { AuthModule } from './shared/auth/auth.module';
 
 @Module({
@@ -24,6 +25,7 @@ import { AuthModule } from './shared/auth/auth.module';
   ],
   controllers: [AppController],
   providers: [
+    FrontendHealthService,
     AppService,
     {
       provide: APP_GUARD,
