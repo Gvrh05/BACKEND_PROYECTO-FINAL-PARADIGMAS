@@ -30,6 +30,11 @@ con la contraseña vigente. No se borra ninguna base ni volumen.
 
 ## Uso
 
+Los perfiles pueden registrarse desde **Crear perfil** e iniciar sesión para
+crear cuestionarios o unirse desde **Unirse** con el PIN de seis dígitos.
+La administración de cuentas en **Usuarios** requiere el rol MASTER.
+El enlace de invitación también admite jugadores invitados.
+
 1. Abrir `http://localhost:5173` e iniciar sesión con el demo configurado.
 2. En **Usuarios**, crear un PROFESOR. La sesión MASTER permanece activa.
 3. Cerrar sesión y entrar como profesor; crear un quiz de Verdadero/Falso.
@@ -54,6 +59,85 @@ Vite escucha en `0.0.0.0`; sus proxies apuntan a los backends locales 3000/3001.
 Configurar `CORS_ORIGIN` coherente con el origen usado. Verificar conectividad,
 firewall y aislamiento Wi-Fi manualmente; el proyecto no cambia esas reglas.
 En despliegue público usar HTTPS y el mismo origen para WS seguro.
+
+## Despliegue desde Docker Hub
+
+Usar un VPS Linux amd64 con Docker Engine, Compose 2.24.4 o superior y
+un dominio HTTPS. Clonar el backend, copiar `.env.example` a `.env` y
+configurar `POSTGRES_PASSWORD`, `AUTH_POSTGRES_PASSWORD`, `JWT_SECRET` y
+`DEMO_USER_PASSWORD` con valores propios. Si la instalación ya existe,
+conservar las contraseñas de base y respaldar los volúmenes antes de actualizar.
+
+`compose.images.yml` usa las imágenes de Docker Hub y deja el frontend en
+`127.0.0.1:5173`. Configurar el proxy HTTPS hacia ese puerto con soporte
+para WebSocket. Poner el origen público en `CORS_ORIGIN`. El frontend debe
+compilarse con `VITE_API_URL=/kahoot-api` y `VITE_AUTH_API_URL=/auth`; dejar
+`VITE_PUBLIC_WEB_URL` vacío para derivar los enlaces del origen de la web.
+Los argumentos Vite solo se aplican durante la compilación de la imagen.
+
+Con Caddy instalado en el VPS, apuntar el DNS del dominio al servidor y
+configurar este bloque en el Caddyfile (sustituir el dominio):
+
+```caddyfile
+quiz.ejemplo.com {
+    reverse_proxy 127.0.0.1:5173
+}
+```
+
+En el cortafuegos público habilitar HTTPS y HTTP para la renovación del
+certificado. El archivo de Compose vincula la aplicación a loopback y
+mantiene privados los puertos de las APIs y las bases.
+
+Establecer `AUTH_IMAGE`, `BACKEND_IMAGE` y `FRONTEND_IMAGE` con las etiquetas
+o los digests de la versión verificada. Por defecto el override usa `latest`
+del equipo. Las imágenes deben incluir los cambios que se van a demostrar.
+
+```sh
+sh scripts/start-images.sh
+docker compose -f docker-compose.yml -f compose.images.yml logs --tail 50 auth api frontend quiz-seed
+```
+
+Configurar el endpoint y el secreto OTLP antes del arranque. Ver
+[la guía de Grafana](grafana/README.md). Tras iniciar, abrir
+`/auth/docs/` y `/kahoot-api/docs/` en el dominio para consultar Scalar.
+Para detener la instalación y conservar datos, ejecutar
+`docker compose -f docker-compose.yml -f compose.images.yml down`.
+
+### Frontend ya publicado en Netlify
+
+Si se mantiene la publicación de Netlify, usar el dominio HTTPS del VPS para
+las APIs y el transporte en vivo. Configurar las variables de compilación
+de la web antes de volver a desplegar:
+
+```dotenv
+VITE_AUTH_API_URL=https://authproyecto-final-paradigmas-production.up.railway.app/auth
+VITE_API_URL=https://api.ejemplo.com/kahoot-api
+VITE_WS_URL=https://api.ejemplo.com
+VITE_PUBLIC_WEB_URL=https://project-deploy-985df3.netlify.app
+```
+
+En el VPS, configurar `CORS_ORIGIN=https://project-deploy-985df3.netlify.app`
+y `FRONTEND_HEALTH_URL=https://project-deploy-985df3.netlify.app/`.
+Comprobar los dos endpoints de salud en el VPS y la conexión del jugador
+desde el sitio de Netlify. Los secretos OTLP se configuran en el VPS.
+
+Si Backend también se ejecuta en Railway, desplegar su Dockerfile en un
+servicio con una sola réplica, conectar PostgreSQL con `DATABASE_URL` y
+montar un volumen escribible en `/app/uploads`. Configurar
+`UPLOADS_DEST=/app/uploads`, `AUTH_SERVICE_URL` con el origen de Auth más
+`/auth`, y el mismo `JWT_SECRET`, `JWT_AUDIENCE` y `JWT_ISSUER` que usa Auth.
+En **ambas APIs** establecer `CORS_ORIGIN=https://project-deploy-985df3.netlify.app`
+y configurar OTLP como variables de servicio. Tras asignar el dominio
+público de Backend, reemplazar `api.ejemplo.com` en Netlify y volver a
+compilar la web. Auth debe desplegar la revisión con el registro y Scalar.
+
+## Cliente de resultados
+
+Desde otra máquina con Node.js, establecer `PROFELINK_API_URL` al origen
+de la aplicación más `/kahoot-api` y `PROFELINK_ACCESS_TOKEN` al token
+Bearer del anfitrión. Ejecutar `node scripts/read-result.mjs PIN` con el PIN
+de una partida terminada. El cliente se comunica por HTTP y no usa las
+bases de datos ni importa código de la aplicación.
 
 ## Verificación de aceptación
 

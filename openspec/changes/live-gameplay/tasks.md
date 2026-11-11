@@ -31,7 +31,10 @@
 ## Evidencia local
 
 - Partida con Auth real y PostgreSQL sin Docker. Dos salas simultáneas y dos jugadores en la sala de prueba. Se comprobaron dos preguntas, la imagen, rechazo tardío y duplicado, reconexión y clasificación 2 a 0 recuperada tras reiniciar la API.
-- El receptor local de diagnóstico recibió métricas OTLP de `kahoot-game-session` y `profelink-auth`. Se comprobaron salas activas, solicitudes de login HTTP 200 y 401 y latencia de Auth. Los atributos de Auth se limitaron a método, plantilla de ruta y código HTTP. La validación del tablero en Grafana Cloud requiere configurar la instancia del equipo.
+- El receptor local de diagnóstico recibió métricas OTLP de `kahoot-game-session` y `profelink-auth`. Se comprobaron salas activas, solicitudes de login HTTP 200 y 401 y latencia de Auth. Los atributos de Auth se limitaron a método, plantilla de ruta y código HTTP. El tablero de Grafana Cloud mostró métricas de una partida local; queda comprobar las del despliegue público.
+- La prueba con las API actualizadas registró un perfil, rechazó un duplicado y permitió entrar al lobby con la cuenta nueva y el PIN. Jugó con dos participantes y un anfitrión en una sala, mientras otra sala permanecía aislada. El cliente HTTP independiente recuperó el resultado 2 a 0. Esta cifra corresponde a la prueba realizada, no al límite de capacidad.
+- Se verificó la exportación OTLP de `frontend_http_up=1` con el frontend local activo. La serie se confirmó en Grafana Cloud con `deployment_environment_name=local` y se guardó el panel de disponibilidad en el tablero.
+- La pila Docker Hub de referencia arrancó sin compilar y respondió al login de demo y a las comprobaciones de salud. Queda publicar y comprobar la revisión que incluye registro, Scalar y la sonda de frontend en el despliegue externo.
 
 ## Workflow follow-up
 

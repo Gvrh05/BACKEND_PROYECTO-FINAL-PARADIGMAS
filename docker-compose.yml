@@ -94,6 +94,7 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-}
       AUTH_SERVICE_URL: http://auth:3001/auth
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-kahoot-game-session}
+      FRONTEND_HEALTH_URL: ${FRONTEND_HEALTH_URL:-http://frontend/}
     ports:
       - "${PORT:-3000}:3000"
     volumes:

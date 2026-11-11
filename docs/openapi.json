@@ -7,8 +7,8 @@
   },
   "servers": [
     {
-      "url": "http://localhost:3000/kahoot-api",
-      "description": "Servidor de Desarrollo Local"
+      "url": "/kahoot-api",
+      "description": "API en el mismo origen que la documentación"
     }
   ],
   "security": [
