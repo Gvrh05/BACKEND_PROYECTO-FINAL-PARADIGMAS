@@ -3,6 +3,7 @@ import { SessionStatus } from '../entities/game-session.entity';
 import { ParticipantDto } from './participant.dto';
 
 export class SessionResponseDto {
+  invitationId: string;
   sessionId: string;
   roomCode: string;
   status: SessionStatus;

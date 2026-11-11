@@ -7,6 +7,7 @@ import { Question } from '../modules/quizzes/entities/question.entity';
 import { QuestionOption } from '../modules/quizzes/entities/question-option.entity';
 import { Quiz } from '../modules/quizzes/entities/quiz.entity';
 import { getDatabaseOptions } from '../shared/database/database.config';
+import { authenticateDemoAccount } from '../shared/database/demo-account';
 
 const quizTitle = 'Evaluación de Cultura General';
 interface DemoQuestion {
@@ -73,48 +74,6 @@ const questions: DemoQuestion[] = [
   },
 ];
 
-interface AuthResponse {
-  accessToken: string;
-  user: { id: string; username: string; role: string };
-}
-
-async function ensureDemoUser(): Promise<AuthResponse['user']> {
-  const baseUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001/auth';
-  const username = process.env.DEMO_USER_USERNAME || 'profesor_test';
-  const password = process.env.DEMO_USER_PASSWORD;
-  if (!password)
-    throw new Error(
-      'DEMO_USER_PASSWORD es obligatorio para crear el usuario demo',
-    );
-
-  const register = await fetch(`${baseUrl.replace(/\/$/, '')}/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password, role: 'PROFESOR' }),
-  });
-  if (register.ok) {
-    const result = (await register.json()) as AuthResponse;
-    return result.user;
-  }
-  if (register.status !== 409) {
-    throw new Error(
-      `Auth no pudo crear el usuario demo (HTTP ${register.status})`,
-    );
-  }
-
-  const login = await fetch(`${baseUrl.replace(/\/$/, '')}/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  });
-  if (!login.ok) {
-    throw new Error(
-      `La cuenta demo ya existe pero no se pudo autenticar (HTTP ${login.status})`,
-    );
-  }
-  return ((await login.json()) as AuthResponse).user;
-}
-
 async function copySeedImages(): Promise<Array<number | null>> {
   const seedDirectory = resolve(
     process.env.SEED_IMAGES_DIR || './public/seeds',
@@ -159,7 +118,7 @@ async function seed(): Promise<void> {
   if (questions.length !== 10)
     throw new Error('El quiz demo debe contener exactamente 10 preguntas');
   const imageSizes = await copySeedImages();
-  const user = await ensureDemoUser();
+  const user = await authenticateDemoAccount();
   const dataSource = new DataSource(getDatabaseOptions());
   await dataSource.initialize();
   try {

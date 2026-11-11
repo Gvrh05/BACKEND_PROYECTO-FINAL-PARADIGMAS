@@ -79,6 +79,7 @@ describe('GameSessionService', () => {
   it('creates and persists the room, including the host exactly once', async () => {
     const created = await service.createSession('host', 'quiz');
     expect(created).toEqual({
+      invitationId: expect.any(String) as unknown,
       sessionId: expect.stringMatching(/^\d{6}$/) as unknown,
       roomCode: created.sessionId,
       status: SessionStatus.LOBBY,

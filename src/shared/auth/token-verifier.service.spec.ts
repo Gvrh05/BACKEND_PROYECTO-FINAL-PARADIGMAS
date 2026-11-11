@@ -1,136 +1,129 @@
-import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import {
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { TokenVerifier } from './token-verifier.service';
-import { GameSessionAuthGuard as JwtAuthGuard } from './game-session-auth.guard';
 
-describe('TokenVerifier / JwtAuthGuard', () => {
-  const settings = {
-    JWT_SECRET: 'unit-test-only-key',
-    JWT_ISSUER: 'unit-test-issuer',
-    JWT_AUDIENCE: 'unit-test-audience',
+describe('Account verification shared by HTTP and WS', () => {
+  const sub = randomUUID();
+  const jwt = new JwtService();
+  const secret = 'test-secret';
+  const verifier = new TokenVerifier(
+    jwt,
+    new ConfigService({ JWT_SECRET: secret }),
+  );
+  const profile = {
+    id: sub,
+    username: 'Teacher',
+    role: 'PROFESOR',
+    active: true,
+    isSystem: false,
+    credentialVersion: 2,
   };
-  let jwt: JwtService;
-  let verifier: TokenVerifier;
-  let guard: JwtAuthGuard;
-
+  const claims = {
+    sub,
+    role: 'PROFESOR',
+    purpose: 'account',
+    credentialVersion: 2,
+    exp: Math.floor(Date.now() / 1000) + 300,
+  };
+  const sign = (overrides = {}) =>
+    jwt.sign({ ...claims, ...overrides }, { secret, audience: 'kahoot-api' });
+  let fetchMock: jest.SpiedFunction<typeof fetch>;
   beforeEach(() => {
-    jwt = new JwtService();
-    verifier = new TokenVerifier(jwt, new ConfigService(settings));
-    guard = new JwtAuthGuard(verifier);
-  });
-
-  function token(payload: Record<string, unknown> = { sub: 'host' }) {
-    return jwt.sign(payload, {
-      secret: settings.JWT_SECRET,
-      algorithm: 'HS256',
-      issuer: settings.JWT_ISSUER,
-      audience: settings.JWT_AUDIENCE,
-      ...(payload.exp === undefined && { expiresIn: 300 }),
-    });
-  }
-
-  function context(authorization?: string) {
-    const request = { headers: { authorization }, user: undefined as unknown };
-    const execution = {
-      switchToHttp: () => ({ getRequest: () => request }),
-    } as unknown as ExecutionContext;
-    return { request, execution };
-  }
-
-  it('verifies a valid token and assigns only verified public claims in HTTP', async () => {
-    const signed = token({
-      sub: 'host',
-      email: 'demo@example.test',
-      role: 'host',
-      name: 'Demo',
-      ignored: 'no',
-    });
-    const { execution, request } = context(`Bearer ${signed}`);
-    await expect(guard.canActivate(execution)).resolves.toBe(true);
-    expect(request.user).toEqual({
-      sub: 'host',
-      email: 'demo@example.test',
-      role: 'host',
-      name: 'Demo',
-    });
-    await expect(verifier.verify(signed)).resolves.toEqual({
-      sub: 'host',
-      email: 'demo@example.test',
-      role: 'host',
-      name: 'Demo',
-    });
-  });
-
-  it.each([undefined, '', 'Basic abc', 'Bearer ', 'Bearer abc extra'])(
-    'rejects an absent/malformed Bearer header: %s',
-    async (header) => {
-      const { execution, request } = context(header);
-      await expect(guard.canActivate(execution)).rejects.toBeInstanceOf(
-        UnauthorizedException,
+    fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify(profile))),
       );
-      expect(request.user).toBeUndefined();
-    },
-  );
-
-  it('rejects invalid signatures and malformed JWTs', async () => {
-    const signed = jwt.sign({ sub: 'host' }, { secret: 'different-test-key' });
-    await expect(verifier.verify(signed)).rejects.toBeInstanceOf(
-      UnauthorizedException,
-    );
-    await expect(verifier.verify('not-a-jwt')).rejects.toBeInstanceOf(
-      UnauthorizedException,
+  });
+  afterEach(() => jest.restoreAllMocks());
+  it('checks the live account every time and returns server profile', async () => {
+    await expect(verifier.verify(sign())).resolves.toEqual({
+      sub,
+      role: 'PROFESOR',
+      name: 'Teacher',
+    });
+    await verifier.verify(sign());
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3001/auth/session/validate',
+      expect.objectContaining({
+        method: 'POST',
+        signal: expect.any(AbortSignal) as AbortSignal,
+      }),
     );
   });
-
-  it('rejects expired tokens', async () => {
-    await expect(
-      verifier.verify(token({ sub: 'host', exp: 1 })),
-    ).rejects.toThrow();
-  });
-
-  it.each([{}, { sub: '' }, { sub: '  ' }, { sub: 42 }])(
-    'rejects a missing or invalid subject: %j',
-    async (payload) => {
-      await expect(verifier.verify(token(payload))).rejects.toBeInstanceOf(
-        UnauthorizedException,
-      );
-    },
-  );
-
   it.each([
-    { issuer: 'wrong-issuer', audience: settings.JWT_AUDIENCE },
-    { issuer: settings.JWT_ISSUER, audience: 'wrong-audience' },
-  ])('rejects issuer/audience mismatch: %j', async (claims) => {
-    const signed = jwt.sign(
-      { sub: 'host' },
-      { secret: settings.JWT_SECRET, ...claims },
+    { sub: 'legacy' },
+    { sub: '' },
+    { role: 'ESTUDIANTE' },
+    { role: 'admin' },
+    { purpose: 'guest' },
+    { credentialVersion: -1 },
+    { credentialVersion: '2' },
+    { exp: 1 },
+  ])('rejects invalid claims %j before contacting Auth', async (overrides) => {
+    await expect(verifier.verify(sign(overrides))).rejects.toBeInstanceOf(
+      UnauthorizedException,
     );
-    await expect(verifier.verify(signed)).rejects.toBeInstanceOf(
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('requires expiry and rejects legacy claims, wrong algorithms, signatures and audience', async () => {
+    const { exp: _exp, ...withoutExpiry } = claims;
+    void _exp;
+    for (const token of [
+      jwt.sign(withoutExpiry, { secret, audience: 'kahoot-api' }),
+      jwt.sign(claims, { secret, audience: 'other' }),
+      jwt.sign(claims, { secret, algorithm: 'HS384', audience: 'kahoot-api' }),
+      jwt.sign(claims, { secret: 'wrong', audience: 'kahoot-api' }),
+      'invalid',
+    ]) {
+      await expect(verifier.verify(token)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it.each([
+    { active: false },
+    { credentialVersion: 3 },
+    { role: 'MASTER' },
+    { id: randomUUID() },
+  ])('rejects stale/inactive accounts %j', async (overrides) => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ ...profile, ...overrides })),
+    );
+    await expect(verifier.verify(sign())).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
   });
-
-  it('rejects algorithms other than HS256', async () => {
-    const signed = jwt.sign(
-      { sub: 'host' },
-      { secret: settings.JWT_SECRET, algorithm: 'HS384' },
+  it('fails closed on outage and invalid upstream data', async () => {
+    fetchMock.mockRejectedValueOnce(new Error('timeout'));
+    await expect(verifier.verify(sign())).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
     );
-    await expect(verifier.verify(signed)).rejects.toBeInstanceOf(
-      UnauthorizedException,
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 503 }));
+    await expect(verifier.verify(sign())).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    fetchMock.mockResolvedValueOnce(new Response('not json'));
+    await expect(verifier.verify(sign())).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
     );
   });
-
-  it('fails closed without a configured secret', async () => {
-    const missing = new TokenVerifier(jwt, new ConfigService({}));
-    await expect(missing.verify(token())).rejects.toBeInstanceOf(
-      UnauthorizedException,
+  it('accepts MASTER and rejects revoked tokens', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ ...profile, role: 'MASTER' })),
     );
-    const blank = new TokenVerifier(
-      jwt,
-      new ConfigService({ JWT_SECRET: ' ' }),
-    );
-    await expect(blank.verify(token())).rejects.toBeInstanceOf(
+    await expect(
+      verifier.verify(sign({ role: 'MASTER' })),
+    ).resolves.toMatchObject({ role: 'MASTER' });
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 401 }));
+    await expect(verifier.verify(sign())).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
   });

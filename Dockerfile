@@ -1,6 +1,6 @@
 FROM node:22-alpine AS base
 WORKDIR /usr/src/app
-RUN npm install --global pnpm@10.19.0
+RUN npm install --global pnpm@11.11.0
 
 # -------------------------------------------------------------
 # Dependencies Stage
@@ -34,4 +34,4 @@ USER node
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "pnpm run migration:run:prod && node dist/main.js"]
+CMD ["sh", "-c", "node node_modules/typeorm/cli.js migration:run -d dist/shared/database/data-source.js && node dist/main.js"]

@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   NotFoundException,
   UnauthorizedException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   ConnectedSocket,
@@ -32,6 +33,8 @@ interface GameSocketData {
   authentication?: Promise<void>;
   operations?: Promise<void>;
   roomCode?: string;
+  guestRoom?: string;
+  expiryTimer?: ReturnType<typeof setTimeout>;
 }
 type GameSocket = Socket<
   Record<string, never>,
@@ -69,9 +72,23 @@ export class GameGateway
 
   private async authenticate(client: GameSocket): Promise<void> {
     try {
-      const user = await this.verifier.verify(
-        client.handshake.auth.token as string,
-      );
+      const auth = client.handshake.auth;
+      if (
+        Object.keys(auth).length !== 1 ||
+        (!('token' in auth) && !('guestToken' in auth))
+      )
+        throw new UnauthorizedException();
+      const user =
+        'guestToken' in auth
+          ? this.sessions.verifyGuest(auth.guestToken)
+          : await this.verifier.verify(auth.token as string);
+      if ('roomCode' in user) {
+        client.data.guestRoom = user.roomCode;
+        client.data.expiryTimer = setTimeout(
+          () => client.disconnect(),
+          Math.max(0, user.expiresAt - Date.now()),
+        ).unref();
+      }
       if (!client.connected) return;
       client.data.user = {
         sub: user.sub,
@@ -90,6 +107,8 @@ export class GameGateway
     return this.enqueue(client, 'join', async () => {
       const user = await this.authenticated(client);
       const roomCode = await this.roomCode(payload);
+      if (client.data.guestRoom && client.data.guestRoom !== roomCode)
+        throw new ForbiddenException('Invitado de otra sala');
       const snapshot = this.sessions.getSessionByCode(roomCode);
       const existing = snapshot.participants.find(
         (player) => player.userId === user.sub,
@@ -107,10 +126,19 @@ export class GameGateway
       }
       await client.join(roomCode);
       client.data.roomCode = roomCode;
+      const state = this.sessions.getSessionByCode(roomCode, user.sub);
       this.events.toSocket(
         client.id,
         'session-state',
-        this.sessions.getSessionByCode(roomCode, user.sub),
+        client.data.guestRoom
+          ? {
+              sessionId: state.sessionId,
+              roomCode: state.roomCode,
+              status: state.status,
+              participants: state.participants,
+              ...(state.game && { game: state.game }),
+            }
+          : state,
       );
       // The service already notified existing members; the joining socket gets a snapshot.
     });
@@ -123,6 +151,8 @@ export class GameGateway
   ): Promise<void> {
     return this.enqueue(client, 'start', async () => {
       const user = await this.authenticated(client);
+      if (client.data.guestRoom)
+        throw new ForbiddenException('Solo cuentas anfitrionas');
       const roomCode = await this.roomCode(payload);
       await this.sessions.startSession(roomCode, user.sub);
     });
@@ -156,6 +186,8 @@ export class GameGateway
   next(@ConnectedSocket() client: GameSocket, @MessageBody() payload: unknown) {
     return this.enqueue(client, 'next', async () => {
       const user = await this.authenticated(client);
+      if (client.data.guestRoom)
+        throw new ForbiddenException('Solo cuentas anfitrionas');
       const { roomCode, questionId } = this.gameCommand(client, payload);
       await this.sessions.nextQuestion(roomCode, user.sub, questionId);
     });
@@ -178,6 +210,14 @@ export class GameGateway
     }
     if (client.data.roomCode !== payload.roomCode)
       throw new ForbiddenException('Primero debes suscribirte a esta sala');
+    if (client.data.guestRoom && client.data.guestRoom !== payload.roomCode)
+      throw new ForbiddenException('Invitado de otra sala');
+    if (
+      Object.keys(payload).some(
+        (key) => !['roomCode', 'questionId', 'answer'].includes(key),
+      )
+    )
+      throw new ForbiddenException('Identidad y comando inválidos');
     return {
       roomCode: payload.roomCode,
       questionId: payload.questionId,
@@ -186,6 +226,7 @@ export class GameGateway
   }
 
   async handleDisconnect(client: GameSocket): Promise<void> {
+    clearTimeout(client.data.expiryTimer);
     this.wsEvents.add(1, { event: 'disconnect' });
     // Drain an in-flight join before removing that socket's membership.
     await client.data.operations;
@@ -212,9 +253,9 @@ export class GameGateway
     if (!client.connected || !client.data.user)
       throw new UnauthorizedException('No autenticado');
     // Recheck expiry/config on each message; a long-lived socket is not a new trust boundary.
-    const verified = await this.verifier.verify(
-      client.handshake.auth.token as string,
-    );
+    const verified = client.data.guestRoom
+      ? this.sessions.verifyGuest(client.handshake.auth.guestToken)
+      : await this.verifier.verify(client.handshake.auth.token as string);
     if (!client.connected || verified.sub !== client.data.user.sub)
       throw new UnauthorizedException('No autenticado');
     return client.data.user;
@@ -276,6 +317,8 @@ export class GameGateway
           message: String(detail.message),
         };
       }
+    } else if (error instanceof ServiceUnavailableException) {
+      payload = { code: 'SERVICE_UNAVAILABLE', message: 'Auth no disponible' };
     } else if (error instanceof UnauthorizedException) {
       payload = {
         code: 'UNAUTHENTICATED',

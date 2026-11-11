@@ -6,13 +6,10 @@ import {
   Param,
   Post,
   Req,
-  UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
-import { GameSessionAuthGuard } from '../../../shared/auth/game-session-auth.guard';
 import type { AuthenticatedRequest } from '../../../shared/auth/game-session-auth.guard';
-import { Public } from '../../../shared/decorators/public.decorator';
 import { GameSessionService } from '../services/game-session.service';
 import { CreateGameSessionDto } from '../dto/create-game-session.dto';
 import { JoinSessionDto } from '../dto/join-session.dto';
@@ -27,9 +24,6 @@ import {
 } from '../dto/session-response.dto';
 
 @Controller('game-sessions')
-// Bypass only the global UUID-only authoring guard, never authentication here.
-@Public()
-@UseGuards(GameSessionAuthGuard)
 // Local validation preserves the existing contracts of quizzes and results.
 @UsePipes(
   new ValidationPipe({
@@ -62,11 +56,16 @@ export class GameSessionController {
     @Param() { roomCode }: RoomCodeDto,
     @Req() request: AuthenticatedRequest,
   ): SessionSnapshotDto {
+    this.sessions.assertHost(roomCode, request.user.sub);
     return this.sessions.getSessionByCode(roomCode, request.user.sub);
   }
 
   @Get(':roomCode/participants')
-  participants(@Param() { roomCode }: RoomCodeDto): ParticipantDto[] {
+  participants(
+    @Param() { roomCode }: RoomCodeDto,
+    @Req() request: AuthenticatedRequest,
+  ): ParticipantDto[] {
+    this.sessions.assertHost(roomCode, request.user.sub);
     return this.sessions.listParticipants(roomCode);
   }
 

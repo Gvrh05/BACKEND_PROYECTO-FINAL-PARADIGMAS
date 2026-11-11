@@ -35,9 +35,10 @@ services:
 
   auth:
     build:
-      context: ../auth
+      context: ${AUTH_BUILD_CONTEXT:-../AUTH_PROYECTO-FINAL-PARADIGMAS}
       dockerfile: Dockerfile
     restart: unless-stopped
+    command: ["sh", "-c", "node dist/bootstrap-master.js && node dist/main.js"]
     environment:
       NODE_ENV: production
       PORT: 3001
@@ -50,6 +51,8 @@ services:
       JWT_AUDIENCE: ${JWT_AUDIENCE:-kahoot-api}
       JWT_ISSUER: ${JWT_ISSUER:-}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      DEMO_USER_USERNAME: ${DEMO_USER_USERNAME:-profesor_test}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:?Set DEMO_USER_PASSWORD in .env}
     ports:
       - "${AUTH_PORT:-3001}:3001"
     depends_on:
@@ -77,7 +80,7 @@ services:
       UPLOADS_DEST: /app/uploads
       MAX_FILE_SIZE: ${MAX_FILE_SIZE:-5242880}
       JWT_ISSUER: ${JWT_ISSUER:-}
-      AUTH_SERVICE_URL: ${AUTH_SERVICE_URL:-http://auth:3001/auth}
+      AUTH_SERVICE_URL: http://auth:3001/auth
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-kahoot-game-session}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
@@ -87,6 +90,8 @@ services:
       - ./public/seeds:/app/public/seeds:ro
     depends_on:
       postgres:
+        condition: service_healthy
+      auth:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/kahoot-api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -121,11 +126,12 @@ services:
 
   frontend:
     build:
-      context: ../kahoot-web/profe-link-kahoot_game
+      context: ${FRONTEND_BUILD_CONTEXT:-../FRONT_PROYECTO-FINAL_PARAGIDMAS}
       dockerfile: Dockerfile
       args:
-        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000/kahoot-api}
-        VITE_AUTH_API_URL: ${VITE_AUTH_API_URL:-http://localhost:3001/auth}
+        VITE_API_URL: ${VITE_API_URL:-/kahoot-api}
+        VITE_AUTH_API_URL: ${VITE_AUTH_API_URL:-/auth}
+        VITE_PUBLIC_WEB_URL: ${VITE_PUBLIC_WEB_URL:-}
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-5173}:80"

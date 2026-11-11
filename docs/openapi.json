@@ -27,7 +27,7 @@
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "Firma HS256 y secreto compartido solo dev/demo; requiere sub y valida expiración e issuer/audience configurados."
+        "description": "JWT de cuenta HS256, sub UUID, exp obligatoria, audiencia kahoot-api, purpose account, role MASTER/PROFESOR y credentialVersion. Auth valida actividad y versión online en cada operación; su indisponibilidad produce 503."
       }
     },
     "schemas": {
@@ -906,6 +906,56 @@
     }
   },
   "paths": {
+    "/public/invitations/{invitationId}": {
+      "get": {
+        "summary": "Metadata mínima de una invitación pública activa",
+        "security": [],
+        "parameters": [{ "name": "invitationId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": {
+            "description": "Sin cuentas privadas, preguntas ni respuestas correctas",
+            "content": { "application/json": { "schema": {
+              "type": "object", "required": ["invitationId", "roomCode", "status", "name"],
+              "properties": {
+                "invitationId": { "type": "string" },
+                "roomCode": { "type": "string" },
+                "status": { "type": "string" },
+                "name": { "type": "string" }
+              }
+            } } }
+          },
+          "404": { "description": "Invitación inexistente o finalizada" },
+          "429": { "description": "Límite de solicitudes excedido" }
+        }
+      }
+    },
+    "/public/invitations/{invitationId}/participants": {
+      "post": {
+        "summary": "Crear participante temporal en LOBBY; no crea una cuenta Auth",
+        "security": [],
+        "parameters": [{ "name": "invitationId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": {
+          "type": "object", "additionalProperties": false, "required": ["username"],
+          "properties": { "username": { "type": "string", "minLength": 1, "maxLength": 80, "description": "Nombre recortado, único en la sala" } }
+        } } } },
+        "responses": {
+          "201": { "description": "Credencial opaca limitada a la sala; guardar en sessionStorage, nunca en URL", "content": { "application/json": { "schema": {
+            "type": "object", "required": ["participantId", "username", "roomCode", "guestToken", "invitationId"],
+            "properties": {
+              "participantId": { "type": "string", "format": "uuid" },
+              "username": { "type": "string" },
+              "roomCode": { "type": "string" },
+              "guestToken": { "type": "string" },
+              "invitationId": { "type": "string" }
+            }
+          } } } },
+          "400": { "description": "Nombre inválido o sala ya iniciada" },
+          "404": { "description": "Invitación inexistente o finalizada" },
+          "409": { "description": "Nombre duplicado" },
+          "429": { "description": "Límite por IP/invitación/sala excedido" }
+        }
+      }
+    },
     "/quizzes": {
       "get": {
         "summary": "Listar solo cuestionarios propios, del más reciente al más antiguo",

@@ -27,7 +27,7 @@ if (!existsSync(envPath)) {
 }
 
 const config = dotenv.parse(readFileSync(envPath));
-const authEnv = resolve(root, '../auth/.env');
+const authEnv = resolve(root, config.AUTH_BUILD_CONTEXT || '../AUTH_PROYECTO-FINAL-PARADIGMAS', '.env');
 if (!existsSync(authEnv)) {
   const authConfig = {
     PORT: config.AUTH_PORT || '3001',
@@ -41,9 +41,12 @@ if (!existsSync(authEnv)) {
     JWT_SECRET: config.JWT_SECRET,
     JWT_AUDIENCE: config.JWT_AUDIENCE || 'kahoot-api',
     JWT_ISSUER: config.JWT_ISSUER || '',
+    DEMO_USER_USERNAME: config.DEMO_USER_USERNAME || 'profesor_test',
+    DEMO_USER_PASSWORD: config.DEMO_USER_PASSWORD,
   };
   if (Object.values(authConfig).some((value) => value === undefined)) {
-    throw new Error('Faltan AUTH_POSTGRES_PASSWORD o JWT_SECRET en kahoot-api/.env.');
+    const missing = Object.entries(authConfig).filter(([, value]) => value === undefined).map(([key]) => key);
+    throw new Error(`Configuración local incompleta (${missing.join(', ')}). Completa .env siguiendo .env.example; se conservan los valores existentes.`);
   }
   writeFileSync(authEnv, Object.entries(authConfig)
     .map(([key, value]) => `${key}=${JSON.stringify(value)}`).join('\n') + '\n', { flag: 'wx' });

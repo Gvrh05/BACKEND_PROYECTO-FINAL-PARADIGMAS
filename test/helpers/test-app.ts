@@ -34,7 +34,13 @@ export async function createTestHarness() {
   const userB = randomUUID();
   const tokenFor = (id: string) =>
     jwt.sign(
-      { sub: id, username: 'test-user', role: 'PROFESOR' },
+      {
+        sub: id,
+        username: 'test-user',
+        role: id === userA ? 'MASTER' : 'PROFESOR',
+        purpose: 'account',
+        credentialVersion: 1,
+      },
       process.env.JWT_SECRET!,
       {
         expiresIn: '1h',
@@ -44,6 +50,29 @@ export async function createTestHarness() {
       },
     );
   const apps = new Set<INestApplication>();
+  const authFetch = jest
+    .spyOn(global, 'fetch')
+    .mockImplementation((_url, options) => {
+      const token = (
+        options?.headers as Record<string, string>
+      ).Authorization.slice(7);
+      const claims = jwt.verify(
+        token,
+        process.env.JWT_SECRET!,
+      ) as jwt.JwtPayload;
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            id: claims.sub,
+            username: 'test-user',
+            role: String(claims.role),
+            active: true,
+            isSystem: claims.role === 'MASTER',
+            credentialVersion: 1,
+          }),
+        ),
+      );
+    });
   return {
     ...database,
     uploads,
@@ -74,6 +103,7 @@ export async function createTestHarness() {
         await database.dispose();
         await rm(uploads, { recursive: true, force: true });
       } finally {
+        authFetch.mockRestore();
         for (const [key, value] of Object.entries(previous)) {
           if (value === undefined) delete process.env[key];
           else process.env[key] = value;
