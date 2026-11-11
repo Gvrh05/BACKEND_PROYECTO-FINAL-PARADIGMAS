@@ -58,8 +58,11 @@ export class GameSessionController {
   }
 
   @Get(':roomCode')
-  get(@Param() { roomCode }: RoomCodeDto): SessionSnapshotDto {
-    return this.sessions.getSessionByCode(roomCode);
+  get(
+    @Param() { roomCode }: RoomCodeDto,
+    @Req() request: AuthenticatedRequest,
+  ): SessionSnapshotDto {
+    return this.sessions.getSessionByCode(roomCode, request.user.sub);
   }
 
   @Get(':roomCode/participants')
@@ -76,7 +79,7 @@ export class GameSessionController {
     return this.sessions.joinSession({
       roomCode,
       userId: request.user.sub,
-      name: body.name,
+      name: body.name ?? request.user.name,
     });
   }
 

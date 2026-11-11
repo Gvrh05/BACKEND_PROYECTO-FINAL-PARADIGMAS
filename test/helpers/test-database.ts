@@ -10,6 +10,8 @@ import { QuizIntegrity1794000000001 } from '../../src/shared/database/migrations
 import { DemoQuiz1794000000002 } from '../../src/shared/database/migrations/1794000000002-DemoQuiz';
 import { PublicQuestionImageUrl1794000000003 } from '../../src/shared/database/migrations/1794000000003-PublicQuestionImageUrl';
 import { GameSessions1794000000004 } from '../../src/shared/database/migrations/1794000000004-GameSessions';
+import { TrueFalseQuestions1794000000005 } from '../../src/shared/database/migrations/1794000000005-TrueFalseQuestions';
+import { LiveGameResult1794000000006 } from '../../src/shared/database/migrations/1794000000006-LiveGameResult';
 import { GameSessionEntity } from '../../src/modules/game-session/entities/game-session.entity';
 
 export async function createTestDatabase() {
@@ -40,6 +42,8 @@ export async function createTestDatabase() {
       DemoQuiz1794000000002,
       PublicQuestionImageUrl1794000000003,
       GameSessions1794000000004,
+      TrueFalseQuestions1794000000005,
+      LiveGameResult1794000000006,
     ],
   });
   await dataSource.initialize();

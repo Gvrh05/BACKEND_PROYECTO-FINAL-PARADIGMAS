@@ -18,7 +18,7 @@ import type {
   OnGatewayInit,
 } from '@nestjs/websockets';
 import { plainToInstance } from 'class-transformer';
-import { validate } from 'class-validator';
+import { isUUID, validate } from 'class-validator';
 import type { Namespace, Socket } from 'socket.io';
 import { TokenVerifier } from '../../../shared/auth/token-verifier.service';
 import type { AuthenticatedUser } from '../../../shared/auth/token-verifier.service';
@@ -110,7 +110,7 @@ export class GameGateway
       this.events.toSocket(
         client.id,
         'session-state',
-        this.sessions.getSessionByCode(roomCode),
+        this.sessions.getSessionByCode(roomCode, user.sub),
       );
       // The service already notified existing members; the joining socket gets a snapshot.
     });
@@ -126,6 +126,63 @@ export class GameGateway
       const roomCode = await this.roomCode(payload);
       await this.sessions.startSession(roomCode, user.sub);
     });
+  }
+
+  @SubscribeMessage('submit-answer')
+  answer(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: unknown,
+  ) {
+    return this.enqueue(client, 'answer', async () => {
+      const user = await this.authenticated(client);
+      const { roomCode, questionId, answer } = this.gameCommand(
+        client,
+        payload,
+      );
+      if (typeof answer !== 'boolean')
+        throw new WsException({
+          code: 'INVALID_ANSWER',
+          message: 'Envía Verdadero o Falso',
+        });
+      await this.sessions.submitAnswer(roomCode, user.sub, questionId, answer);
+      this.events.toSocket(client.id, 'answer-accepted', {
+        roomCode,
+        questionId,
+      });
+    });
+  }
+
+  @SubscribeMessage('next-question')
+  next(@ConnectedSocket() client: GameSocket, @MessageBody() payload: unknown) {
+    return this.enqueue(client, 'next', async () => {
+      const user = await this.authenticated(client);
+      const { roomCode, questionId } = this.gameCommand(client, payload);
+      await this.sessions.nextQuestion(roomCode, user.sub, questionId);
+    });
+  }
+
+  private gameCommand(client: GameSocket, payload: unknown) {
+    if (
+      !payload ||
+      typeof payload !== 'object' ||
+      !('roomCode' in payload) ||
+      !('questionId' in payload) ||
+      typeof payload.roomCode !== 'string' ||
+      typeof payload.questionId !== 'string' ||
+      !isUUID(payload.questionId)
+    ) {
+      throw new WsException({
+        code: 'INVALID_COMMAND',
+        message: 'La pregunta o la sala no son válidas',
+      });
+    }
+    if (client.data.roomCode !== payload.roomCode)
+      throw new ForbiddenException('Primero debes suscribirte a esta sala');
+    return {
+      roomCode: payload.roomCode,
+      questionId: payload.questionId,
+      answer: 'answer' in payload ? payload.answer : undefined,
+    };
   }
 
   async handleDisconnect(client: GameSocket): Promise<void> {
@@ -187,7 +244,7 @@ export class GameGateway
 
   private enqueue(
     client: GameSocket,
-    operation: 'join' | 'start',
+    operation: 'join' | 'start' | 'answer' | 'next',
     action: () => Promise<void>,
   ): Promise<void> {
     this.wsEvents.add(1, { event: operation });
@@ -200,7 +257,7 @@ export class GameGateway
 
   private sendError(
     client: GameSocket,
-    operation: 'join' | 'start',
+    operation: 'join' | 'start' | 'answer' | 'next',
     error: unknown,
   ): void {
     let payload = {

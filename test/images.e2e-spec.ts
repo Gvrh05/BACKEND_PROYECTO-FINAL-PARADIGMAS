@@ -315,9 +315,12 @@ describe('Private question images', () => {
       .getRepository(Question)
       .findOneByOrFail({ id: question.id });
     const publicPath = `/uploads/questions/${stored.imageStorageKey}`;
+    const origin = process.env.CORS_ORIGIN || 'http://localhost:5173';
     const publicImage = await http()
       .get(publicPath)
+      .set('Origin', origin)
       .expect(200)
+      .expect('Access-Control-Allow-Origin', origin)
       .expect('Content-Type', 'image/png');
     expect(publicImage.body).toEqual(png);
     expect(publicPath).toBe(

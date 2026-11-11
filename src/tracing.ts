@@ -1,60 +1,19 @@
-/** Integration seam for the OTel teammate. No SDK, exporter or network I/O.
- * This stub remains no-op even when an endpoint is configured, until replaced.
- */
-export interface Span {
-  end(): void;
-  recordException(error: unknown): void;
-  setStatus(status: { code: number; message?: string }): void;
-}
+import 'dotenv/config';
+import { metrics, trace } from '@opentelemetry/api';
+import { startNodeSdk } from '@opentelemetry/sdk-node';
 
-const noop = () => undefined;
-const span: Span = { end: noop, recordException: noop, setStatus: noop };
-const instrument = { add: noop, record: noop };
+export const getTracer = (name: string) => trace.getTracer(name);
+export const getMeter = (name: string) => metrics.getMeter(name);
 
-export function getTracer(_name: string) {
-  void _name;
-  return {
-    startActiveSpan<T>(
-      _spanName: string,
-      callback: (activeSpan: Span) => T,
-    ): T {
-      return callback(span);
+/** Import before Nest so services receive the configured providers. */
+if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT?.trim()) {
+  process.env.OTEL_EXPORTER_OTLP_PROTOCOL ??= 'http/protobuf';
+  process.env.OTEL_LOGS_EXPORTER ??= 'none';
+  startNodeSdk({
+    resourceAttributes: {
+      'service.name': process.env.OTEL_SERVICE_NAME || 'kahoot-game-session',
+      'deployment.environment.name':
+        process.env.OTEL_DEPLOYMENT_ENVIRONMENT || 'local',
     },
-  };
-}
-
-export function getMeter(_name: string) {
-  void _name;
-  return {
-    createCounter: (_instrumentName: string) => {
-      void _instrumentName;
-      return {
-        add: (value: number, attributes?: Record<string, string>) => {
-          void value;
-          void attributes;
-          instrument.add();
-        },
-      };
-    },
-    createGauge: (_instrumentName: string) => {
-      void _instrumentName;
-      return {
-        record: (value: number, attributes?: Record<string, string>) => {
-          void value;
-          void attributes;
-          instrument.record();
-        },
-      };
-    },
-    createHistogram: (_instrumentName: string) => {
-      void _instrumentName;
-      return {
-        record: (value: number, attributes?: Record<string, string>) => {
-          void value;
-          void attributes;
-          instrument.record();
-        },
-      };
-    },
-  };
+  });
 }

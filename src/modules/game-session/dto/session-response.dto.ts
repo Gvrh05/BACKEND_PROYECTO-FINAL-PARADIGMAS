@@ -1,3 +1,4 @@
+import type { LiveGame } from '../engine/live-game';
 import { SessionStatus } from '../entities/game-session.entity';
 import { ParticipantDto } from './participant.dto';
 
@@ -12,6 +13,7 @@ export class SessionResponseDto {
 export class SessionSnapshotDto extends SessionResponseDto {
   participants: ParticipantDto[];
   startedAt?: string;
+  game?: ReturnType<LiveGame['snapshot']>;
 }
 
 export class StartedSessionDto extends SessionResponseDto {

@@ -1,8 +1,13 @@
+import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
+import type { LiveQuestion } from '../engine/live-game';
+import { LiveGame, gameError } from '../engine/live-game';
 import {
   BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Logger,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -11,7 +16,6 @@ import { Repository } from 'typeorm';
 import { SessionManager } from '../engine/session-manager';
 import type { ActiveSession, PlayerInput } from '../engine/session-manager';
 import { JoinRoomDto } from '../dto/join-room.dto';
-import { SubmitAnswerDto } from '../dto/submit-answer.dto';
 import {
   GameSessionEntity,
   SessionStatus,
@@ -22,6 +26,7 @@ import { getMeter, getTracer } from '../../../tracing';
 
 @Injectable()
 export class GameSessionService {
+  private readonly logger = new Logger(GameSessionService.name);
   private readonly locks = new Map<string, Promise<void>>();
   private readonly tracer = getTracer('game-session');
   private readonly meter = getMeter('game-session');
@@ -29,6 +34,12 @@ export class GameSessionService {
   private readonly participants = this.meter.createHistogram(
     'participants_per_session',
   );
+
+  private readonly answers = this.meter.createCounter('game_answers');
+  private readonly answerLatency = this.meter.createHistogram(
+    'game_answer_latency_ms',
+  );
+  private readonly reconnects = this.meter.createCounter('game_reconnections');
 
   constructor(
     private readonly sessionManager: SessionManager,
@@ -86,12 +97,17 @@ export class GameSessionService {
     );
   }
 
-  getSessionByCode(roomCode: string) {
+  getSessionByCode(roomCode: string, userId?: string) {
     const session = this.sessionManager.requireSession(roomCode);
     return {
       ...this.summary(session),
       ...(session.startedAt && { startedAt: session.startedAt.toISOString() }),
       participants: this.listParticipants(roomCode),
+      ...(userId &&
+        session.players.has(userId) &&
+        session.liveGame && {
+          game: session.liveGame.snapshot(userId),
+        }),
     };
   }
 
@@ -104,6 +120,12 @@ export class GameSessionService {
     return this.tracer.startActiveSpan('joinSession', (span) => {
       try {
         const result = this.sessionManager.addPlayer(input.roomCode, input);
+        if (
+          !result.added &&
+          input.socketId &&
+          this.sessionManager.requireSession(input.roomCode).liveGame
+        )
+          this.reconnects.add(1);
         const participants = this.listParticipants(input.roomCode);
         this.events.participantsUpdated(input.roomCode, participants);
         this.participants.record(participants.length);
@@ -145,20 +167,28 @@ export class GameSessionService {
 
   private async startSessionCore(roomCode: string, hostId: string) {
     return this.exclusive(roomCode, async () => {
-      this.sessionManager.assertCanStart(roomCode, hostId);
+      const lobby = this.sessionManager.assertCanStart(roomCode, hostId);
+      const game = await this.prepareGame(hostId, lobby.quizId);
       const startedAt = new Date();
-      const result = await this.sessions.update(
-        { roomCode, hostId, status: SessionStatus.LOBBY },
-        { status: SessionStatus.IN_PROGRESS, startedAt },
-      );
-      if (result.affected !== 1)
-        throw new BadRequestException('La sala no está en LOBBY');
+      try {
+        const result = await this.sessions.update(
+          { roomCode, hostId, status: SessionStatus.LOBBY },
+          { status: SessionStatus.IN_PROGRESS, startedAt },
+        );
+        if (result.affected !== 1)
+          throw new BadRequestException('La sala no está en LOBBY');
+      } catch (error) {
+        await this.releaseGame(game);
+        throw error;
+      }
       const session = this.sessionManager.startSession(
         roomCode,
         hostId,
         startedAt,
       );
+      session.liveGame = game;
       this.events.sessionStarted(roomCode, startedAt.toISOString());
+      this.openRound(session, game);
       return { ...this.summary(session), startedAt: startedAt.toISOString() };
     });
   }
@@ -174,6 +204,7 @@ export class GameSessionService {
       if (result.affected !== 1)
         throw new NotFoundException('Sala inexistente en persistencia');
       session.status = SessionStatus.FINISHED;
+      if (session.liveGame) await this.releaseGame(session.liveGame);
       this.sessionManager.removeSession(roomCode);
       this.activeSessions.record(this.sessionManager.activeCount);
     });
@@ -187,12 +218,210 @@ export class GameSessionService {
     );
   }
 
-  submitAnswer(dto: SubmitAnswerDto) {
-    const session = this.sessionManager.getSession(dto.pin);
-    if (!session) {
-      throw new NotFoundException(`Session with PIN ${dto.pin} not found`);
+  async submitAnswer(
+    roomCode: string,
+    userId: string,
+    questionId: string,
+    answer: boolean,
+  ) {
+    const started = performance.now();
+    try {
+      await this.exclusive(roomCode, () => {
+        const session = this.sessionManager.requireSession(roomCode);
+        if (userId === session.hostId || !session.players.has(userId)) {
+          throw gameError(
+            'FORBIDDEN',
+            'Solo un participante de esta sala puede responder',
+          );
+        }
+        this.requireGame(session).submit(
+          userId,
+          questionId,
+          answer,
+          Date.now(),
+        );
+      });
+      this.answers.add(1, { outcome: 'accepted' });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : '';
+      const allowed = [
+        'LATE_ANSWER',
+        'DUPLICATE_ANSWER',
+        'WRONG_QUESTION',
+        'FORBIDDEN',
+        'INVALID_SESSION_STATUS',
+      ];
+      this.answers.add(1, {
+        outcome: allowed.includes(reason) ? reason.toLowerCase() : 'rejected',
+      });
+      throw error;
+    } finally {
+      this.answerLatency.record(performance.now() - started);
     }
-    return { success: true, pin: dto.pin, playerId: dto.playerId };
+  }
+
+  async nextQuestion(roomCode: string, hostId: string, questionId: string) {
+    return this.exclusive(roomCode, async () => {
+      const session = this.sessionManager.requireSession(roomCode);
+      if (session.hostId !== hostId)
+        throw gameError('FORBIDDEN', 'Solo el anfitrión puede avanzar');
+      const game = this.requireGame(session);
+      if (!game.closed || game.question.id !== questionId) {
+        throw gameError(
+          'INVALID_SESSION_STATUS',
+          'Espera a que cierre la pregunta actual',
+        );
+      }
+      if (game.index + 1 < game.questions.length) {
+        game.index++;
+        this.openRound(session, game);
+        return;
+      }
+      const scores = [...session.players.values()]
+        .filter((player) => player.userId !== hostId)
+        .map((player) => ({
+          playerId: player.userId,
+          playerName: player.name,
+          score: game.scores.get(player.userId) ?? 0,
+        }))
+        .sort((a, b) => b.score - a.score);
+      const result = {
+        id: roomCode,
+        pin: roomCode,
+        quizId: session.quizId,
+        totalPlayers: scores.length,
+        scores: scores.map((player) => ({
+          ...player,
+          correctAnswersCount: player.score,
+          rank: scores.findIndex(({ score }) => score === player.score) + 1,
+        })),
+      };
+      const updated = await this.sessions.update(
+        { roomCode, hostId, status: SessionStatus.IN_PROGRESS },
+        { status: SessionStatus.FINISHED, finishedAt: new Date(), result },
+      );
+      if (updated.affected !== 1)
+        throw gameError('INVALID_SESSION_STATUS', 'La partida ya terminó');
+      session.status = SessionStatus.FINISHED;
+      this.events.toRoom(roomCode, 'game-finished', {
+        roomCode,
+        version: game.version + 1,
+        scores: result.scores.map(({ playerName, score, rank }) => ({
+          playerName,
+          score,
+          rank,
+        })),
+      });
+      this.sessionManager.removeSession(roomCode);
+      this.activeSessions.record(this.sessionManager.activeCount);
+      await this.releaseGame(game);
+    });
+  }
+
+  private requireGame(session: ActiveSession): LiveGame {
+    if (session.status !== SessionStatus.IN_PROGRESS || !session.liveGame) {
+      throw gameError(
+        'INVALID_SESSION_STATUS',
+        'La sala no tiene una partida activa',
+      );
+    }
+    return session.liveGame;
+  }
+
+  private openRound(session: ActiveSession, game: LiveGame) {
+    game.open(Date.now());
+    this.events.toRoom(session.pin, 'question-opened', {
+      roomCode: session.pin,
+      game: game.snapshot(),
+    });
+    const version = game.version;
+    game.timer = setTimeout(
+      () => {
+        void this.exclusive(session.pin, () => {
+          if (
+            session.status !== SessionStatus.IN_PROGRESS ||
+            game.version !== version ||
+            !game.close()
+          )
+            return;
+          this.events.toRoom(session.pin, 'question-closed', {
+            roomCode: session.pin,
+            game: game.snapshot(),
+          });
+          for (const player of session.players.values()) {
+            for (const socketId of player.socketIds) {
+              this.events.toSocket(socketId, 'round-result', {
+                roomCode: session.pin,
+                game: game.snapshot(player.userId),
+              });
+            }
+          }
+        }).catch((error: unknown) => {
+          this.logger.error(
+            'Falló el cierre de una ronda',
+            error instanceof Error ? error.stack : undefined,
+          );
+        });
+      },
+      Math.max(0, game.closesAt - Date.now()),
+    );
+    game.timer.unref();
+  }
+
+  private async prepareGame(hostId: string, quizId: string): Promise<LiveGame> {
+    const { questions } = await this.quizzesService.findOne(hostId, quizId);
+    if (
+      !questions.length ||
+      questions.some(({ kind }) => kind !== 'TRUE_FALSE')
+    ) {
+      throw new BadRequestException(
+        'La partida requiere un cuestionario de solo preguntas Verdadero/Falso',
+      );
+    }
+    const uploads = resolve(process.env.UPLOADS_DEST || './uploads');
+    let directory: string | undefined;
+    try {
+      const snapshot: LiveQuestion[] = [];
+      for (const question of questions) {
+        let imageUrl: string | null = null;
+        if (question.imageUrl) {
+          const filename = basename(question.imageUrl);
+          if (!/^[-\w]+\.(png|jpe?g|webp)$/i.test(filename))
+            throw new BadRequestException('Imagen de pregunta inválida');
+          if (!directory) {
+            const root = join(uploads, 'live');
+            await mkdir(root, { recursive: true });
+            directory = await mkdtemp(join(root, 'game-'));
+          }
+          await copyFile(
+            join(uploads, 'questions', filename),
+            join(directory, filename),
+          );
+          imageUrl = '/uploads/live/' + basename(directory) + '/' + filename;
+        }
+        snapshot.push({
+          id: question.id,
+          questionText: question.questionText,
+          imageUrl,
+          timeLimitSeconds: question.timeLimitSeconds ?? 20,
+          correctAnswer: question.options.some(
+            ({ text, isCorrect }) => text === 'Verdadero' && isCorrect,
+          ),
+        });
+      }
+      return new LiveGame(snapshot, directory);
+    } catch (error) {
+      if (directory) await rm(directory, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  private async releaseGame(game: LiveGame) {
+    clearTimeout(game.timer);
+    if (game.imageDirectory)
+      await rm(game.imageDirectory, { recursive: true, force: true }).catch(
+        () => undefined,
+      );
   }
 
   private summary(session: ActiveSession) {
@@ -217,7 +446,7 @@ export class GameSessionService {
   /** Serialize start/remove across their DB awaits; rejected operations don't poison the queue. */
   private async exclusive<T>(
     roomCode: string,
-    action: () => Promise<T>,
+    action: () => T | Promise<T>,
   ): Promise<T> {
     const previous = this.locks.get(roomCode) ?? Promise.resolve();
     let release!: () => void;

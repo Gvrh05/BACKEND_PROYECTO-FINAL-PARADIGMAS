@@ -1,7 +1,9 @@
 import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
+import { QuestionOption } from '../src/modules/quizzes/entities/question-option.entity';
 import { Quiz } from '../src/modules/quizzes/entities/quiz.entity';
+import { questionBody, trueFalseQuestionBody } from './helpers/quiz-fixtures';
 import { createTestHarness } from './helpers/test-app';
 
 describe('AppController (e2e)', () => {
@@ -62,6 +64,11 @@ describe('AppController (e2e)', () => {
       .auth(harness.tokenA, { type: 'bearer' })
       .send({ quizId: quiz.id })
       .expect(201);
+    await api
+      .post(`/kahoot-api/quizzes/${quiz.id}/questions`)
+      .auth(harness.tokenA, { type: 'bearer' })
+      .send(trueFalseQuestionBody())
+      .expect(201);
     const route = `/kahoot-api/game-sessions/${created.body.roomCode}`;
     await api
       .post(`${route}/join`)
@@ -82,6 +89,68 @@ describe('AppController (e2e)', () => {
       status: 'IN_PROGRESS',
       startedAt: expect.any(String),
     });
+  });
+
+  it('preserves old four-option questions and enforces the binary format in PostgreSQL', async () => {
+    const quiz = await harness.dataSource
+      .getRepository(Quiz)
+      .save({ authorId: harness.userA, title: 'Tipos de pregunta' });
+    const api = request(app.getHttpServer());
+    const route = `/kahoot-api/quizzes/${quiz.id}/questions`;
+    const legacy = await api
+      .post(route)
+      .auth(harness.tokenA, { type: 'bearer' })
+      .send(questionBody())
+      .expect(201);
+    await api
+      .patch(`${route}/${legacy.body.id}`)
+      .auth(harness.tokenA, { type: 'bearer' })
+      .send({ questionText: 'Editada' })
+      .expect(200);
+    const binary = await api
+      .post(route)
+      .auth(harness.tokenA, { type: 'bearer' })
+      .send(trueFalseQuestionBody())
+      .expect(201);
+    const edited = await api
+      .patch(`${route}/${binary.body.id}`)
+      .auth(harness.tokenA, { type: 'bearer' })
+      .send({
+        options: [
+          { text: 'Verdadero', isCorrect: false },
+          { text: 'Falso', isCorrect: true },
+        ],
+      })
+      .expect(200);
+    expect(edited.body.options).toHaveLength(2);
+    await expect(
+      harness.dataSource.transaction(async (manager) => {
+        await manager.update(
+          QuestionOption,
+          { questionId: binary.body.id, position: 0 },
+          { text: 'Falso' },
+        );
+      }),
+    ).rejects.toMatchObject({ code: '23514' });
+    const response = await api
+      .get(route)
+      .auth(harness.tokenA, { type: 'bearer' })
+      .expect(200);
+    expect(response.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: legacy.body.id,
+          options: expect.arrayContaining([
+            expect.objectContaining({ text: 'Opción 4' }),
+          ]),
+        }),
+        expect.objectContaining({
+          id: binary.body.id,
+          kind: 'TRUE_FALSE',
+          options: edited.body.options,
+        }),
+      ]),
+    );
   });
 
   afterEach(async () => {

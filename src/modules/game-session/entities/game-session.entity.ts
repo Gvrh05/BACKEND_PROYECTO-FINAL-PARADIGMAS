@@ -5,6 +5,8 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 
+import type { GameResult } from '../../results/entities/game-result.entity';
+
 export enum SessionStatus {
   LOBBY = 'LOBBY',
   IN_PROGRESS = 'IN_PROGRESS',
@@ -37,4 +39,7 @@ export class GameSessionEntity {
 
   @Column({ type: 'timestamptz', nullable: true })
   finishedAt: Date | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  result: Omit<GameResult, 'createdAt'> | null;
 }

@@ -3,7 +3,10 @@ import { randomUUID } from 'node:crypto';
 import { ForbiddenException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { Quiz } from '../src/modules/quizzes/entities/quiz.entity';
-import { Question } from '../src/modules/quizzes/entities/question.entity';
+import {
+  Question,
+  QuestionKind,
+} from '../src/modules/quizzes/entities/question.entity';
 import { QuestionOption } from '../src/modules/quizzes/entities/question-option.entity';
 import { QuizzesService } from '../src/modules/quizzes/services/quizzes.service';
 import {
@@ -13,6 +16,7 @@ import {
 import { SessionManager } from '../src/modules/game-session/engine/session-manager';
 import { GameSessionEvents } from '../src/modules/game-session/gateways/game-session.events';
 import { GameSessionService } from '../src/modules/game-session/services/game-session.service';
+import { trueFalseQuestionBody } from './helpers/quiz-fixtures';
 import { getDatabaseOptions } from '../src/shared/database/database.config';
 
 /** Opt-in real Postgres integration, never part of the default transport e2e.
@@ -69,6 +73,22 @@ describe('GameSession persistence with real Postgres', () => {
     quiz = await database
       .getRepository(Quiz)
       .save({ title: 'Integration fixture (not demo seed)', authorId: hostId });
+    await database.transaction(async (manager) => {
+      const { questionText, options } = trueFalseQuestionBody();
+      const question = await manager.save(Question, {
+        quizId: quiz.id,
+        questionText,
+        kind: QuestionKind.TRUE_FALSE,
+      });
+      await manager.save(
+        QuestionOption,
+        options.map((option, position) => ({
+          ...option,
+          questionId: question.id,
+          position,
+        })),
+      );
+    });
   });
 
   afterAll(async () => {

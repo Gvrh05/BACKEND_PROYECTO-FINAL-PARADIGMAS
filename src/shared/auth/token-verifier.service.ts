@@ -35,11 +35,12 @@ export class TokenVerifier {
       if (typeof claims.sub !== 'string' || !claims.sub.trim()) {
         throw new Error('Missing subject');
       }
+      const name = claims.name ?? claims.username;
       return {
         sub: claims.sub,
         ...(typeof claims.email === 'string' && { email: claims.email }),
         ...(typeof claims.role === 'string' && { role: claims.role }),
-        ...(typeof claims.name === 'string' && { name: claims.name }),
+        ...(typeof name === 'string' && { name }),
       };
     } catch {
       // Do not disclose tokens, cryptographic errors or server configuration.

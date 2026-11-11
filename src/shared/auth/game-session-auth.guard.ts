@@ -9,7 +9,7 @@ import { TokenVerifier } from './token-verifier.service';
 import type { AuthenticatedUser } from './token-verifier.service';
 
 export type AuthenticatedRequest = Request & {
-  user: Omit<AuthenticatedUser, 'name'>;
+  user: AuthenticatedUser;
 };
 
 /** Punto 3 shares this verifier with WS, including issuer/audience and DEV subjects. */
@@ -24,11 +24,12 @@ export class GameSessionAuthGuard implements CanActivate {
       throw new UnauthorizedException(
         'Token de autenticación faltante o inválido',
       );
-    const { sub, email, role } = await this.verifier.verify(match[1]);
+    const { sub, email, role, name } = await this.verifier.verify(match[1]);
     request.user = {
       sub,
       ...(email !== undefined && { email }),
       ...(role !== undefined && { role }),
+      ...(name !== undefined && { name }),
     };
     return true;
   }

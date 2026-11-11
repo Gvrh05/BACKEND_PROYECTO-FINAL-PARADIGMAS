@@ -1,8 +1,12 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { EntityManager } from 'typeorm';
 import { Quiz } from '../entities/quiz.entity';
-import { Question } from '../entities/question.entity';
+import { Question, QuestionKind } from '../entities/question.entity';
 import { QuestionOption } from '../entities/question-option.entity';
 import { AddQuestionDto } from '../dto/add-question.dto';
 import { UpdateQuestionDto } from '../dto/update-question.dto';
@@ -60,7 +64,10 @@ export class QuestionsService {
 
   async create(userId: string, quizId: string, dto: AddQuestionDto) {
     return this.quizzes.withOwnedQuiz(userId, quizId, async (manager) => {
+      const kind = dto.kind ?? QuestionKind.MULTIPLE_CHOICE;
+      this.assertOptions(kind, dto.options);
       const question = await manager.save(Question, {
+        kind,
         quizId,
         questionText: dto.questionText,
         timeLimitSeconds:
@@ -82,8 +89,10 @@ export class QuestionsService {
     dto: UpdateQuestionDto,
   ) {
     return this.quizzes.withOwnedQuiz(userId, quizId, async (manager) => {
-      await this.loadOwned(userId, quizId, id, manager);
-      const fields: Partial<Question> = { updatedAt: new Date() };
+      const current = await this.loadOwned(userId, quizId, id, manager);
+      const kind = dto.kind ?? current.kind;
+      this.assertOptions(kind, dto.options ?? current.options);
+      const fields: Partial<Question> = { kind, updatedAt: new Date() };
       if (dto.questionText !== undefined)
         fields.questionText = dto.questionText;
       if (dto.timeLimitSeconds !== undefined)
@@ -111,6 +120,24 @@ export class QuestionsService {
       await manager.delete(Question, id);
       await this.touchQuiz(manager, quizId);
     });
+  }
+
+  private assertOptions(
+    kind: QuestionKind,
+    options: AddQuestionDto['options'],
+  ) {
+    const labels = new Set(options.map(({ text }) => text));
+    if (
+      kind === QuestionKind.TRUE_FALSE
+        ? options.length !== 2 ||
+          !labels.has('Verdadero') ||
+          !labels.has('Falso')
+        : options.length !== 4
+    ) {
+      throw new BadRequestException(
+        'Opciones incompatibles con el tipo de pregunta',
+      );
+    }
   }
 
   private async saveOptions(

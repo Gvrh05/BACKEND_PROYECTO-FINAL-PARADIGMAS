@@ -61,7 +61,7 @@ export class QuizzesService {
   async findOne(userId: string, id: string) {
     const quiz = await this.dataSource.getRepository(Quiz).findOne({
       where: [
-        { id, authorId: userId },
+        { id, authorId: quizAuthorId(userId) ?? userId },
         { id, isDemo: true },
       ],
       relations: { questions: { options: true } },

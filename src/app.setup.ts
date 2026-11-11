@@ -7,6 +7,11 @@ import { resolve } from 'node:path';
 
 /** Apply the same HTTP configuration in production and integration tests. */
 export function configureApp(app: INestApplication): void {
+  app.enableCors({
+    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
+    credentials: true,
+  });
   app.use(
     '/uploads',
     expressStatic(resolve(process.env.UPLOADS_DEST || './uploads'), {
@@ -15,11 +20,6 @@ export function configureApp(app: INestApplication): void {
       maxAge: 0,
     }),
   );
-  app.enableCors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
-    methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
-    credentials: true,
-  });
   app.setGlobalPrefix(APP_CONFIG.GLOBAL_PREFIX);
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new LoggingInterceptor());

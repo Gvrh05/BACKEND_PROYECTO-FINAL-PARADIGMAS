@@ -15,6 +15,10 @@ export class GameSessionEvents {
     this.server?.to(socketId).emit(event, payload);
   }
 
+  toRoom(roomCode: string, event: string, payload: unknown): void {
+    this.server?.to(roomCode).emit(event, payload);
+  }
+
   participantsUpdated(roomCode: string, participants: ParticipantDto[]): void {
     this.server?.to(roomCode).emit('participants-updated', { participants });
   }
