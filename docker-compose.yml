@@ -1,3 +1,12 @@
+x-otel-environment: &otel-environment
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+  OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+  OTEL_DEPLOYMENT_ENVIRONMENT: ${OTEL_DEPLOYMENT_ENVIRONMENT:-local}
+  OTEL_METRICS_EXPORTER: ${OTEL_METRICS_EXPORTER:-otlp}
+  OTEL_TRACES_EXPORTER: ${OTEL_TRACES_EXPORTER:-otlp}
+  OTEL_METRIC_EXPORT_INTERVAL: ${OTEL_METRIC_EXPORT_INTERVAL:-10000}
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -40,6 +49,8 @@ services:
     restart: unless-stopped
     command: ["sh", "-c", "node dist/bootstrap-master.js && node dist/main.js"]
     environment:
+      <<: *otel-environment
+      OTEL_SERVICE_NAME: ${AUTH_OTEL_SERVICE_NAME:-profelink-auth}
       NODE_ENV: production
       PORT: 3001
       DB_HOST: auth-db
@@ -71,6 +82,7 @@ services:
       target: production
     restart: unless-stopped
     environment:
+      <<: *otel-environment
       NODE_ENV: production
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER:-kahoot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-kahoot_db}?schema=public
@@ -82,7 +94,6 @@ services:
       JWT_ISSUER: ${JWT_ISSUER:-}
       AUTH_SERVICE_URL: http://auth:3001/auth
       OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-kahoot-game-session}
-      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     ports:
       - "${PORT:-3000}:3000"
     volumes:

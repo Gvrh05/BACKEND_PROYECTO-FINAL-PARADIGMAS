@@ -31,7 +31,7 @@
 ## Evidencia local
 
 - Partida con Auth real y PostgreSQL sin Docker. Dos salas simultáneas y dos jugadores en la sala de prueba. Se comprobaron dos preguntas, la imagen, rechazo tardío y duplicado, reconexión y clasificación 2 a 0 recuperada tras reiniciar la API.
-- El receptor local de diagnóstico recibió métricas OTLP de la API. La evidencia de Grafana Cloud y de Auth espera la configuración del stack del equipo.
+- El receptor local de diagnóstico recibió métricas OTLP de `kahoot-game-session` y `profelink-auth`. Se comprobaron salas activas, solicitudes de login HTTP 200 y 401 y latencia de Auth. Los atributos de Auth se limitaron a método, plantilla de ruta y código HTTP. La validación del tablero en Grafana Cloud requiere configurar la instancia del equipo.
 
 ## Workflow follow-up
 

@@ -11,7 +11,7 @@
   "title": "ProfeLink · Partida en vivo",
   "uid": "profelink-live-gameplay",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "time": {
     "from": "now-30m",
     "to": "now"
@@ -144,6 +144,87 @@
         {
           "refId": "A",
           "expr": "histogram_quantile(0.95, sum by (le) (rate(game_answer_latency_ms_bucket[5m])))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "Solicitudes de Auth por ruta",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route, method) (rate(auth_http_requests_total[$__rate_interval]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "Errores de Auth por código HTTP",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (increase(auth_http_requests_total{status=~\"4..|5..\"}[$__range]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "title": "Latencia p95 de Auth",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(auth_http_duration_ms_bucket[$__rate_interval])))"
         }
       ],
       "fieldConfig": {
