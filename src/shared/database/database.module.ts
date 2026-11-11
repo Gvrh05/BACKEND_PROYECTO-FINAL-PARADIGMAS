@@ -1,12 +1,17 @@
+import 'dotenv/config';
 import { Module, Global } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { getDatabaseOptions } from './database.config';
+import { DatabaseReadiness } from './database-readiness.service';
 
-/**
- * DatabaseModule
- * Módulo global para la conexión y configuración de la base de datos (Prisma / TypeORM).
- */
 @Global()
 @Module({
-  providers: [],
-  exports: [],
+  imports: [
+    TypeOrmModule.forRootAsync({
+      useFactory: () => ({ ...getDatabaseOptions(), autoLoadEntities: true }),
+    }),
+  ],
+  providers: [DatabaseReadiness],
+  exports: [TypeOrmModule],
 })
 export class DatabaseModule {}

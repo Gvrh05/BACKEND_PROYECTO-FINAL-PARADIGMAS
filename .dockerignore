@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.opencode
+.agents
+openspec
+.env
+.env.*
+coverage
+public/uploads/*
+*.log
