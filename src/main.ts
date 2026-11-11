@@ -8,6 +8,7 @@ import { APP_CONFIG } from './shared/utils/constants';
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
 
   configureApp(app);
 
