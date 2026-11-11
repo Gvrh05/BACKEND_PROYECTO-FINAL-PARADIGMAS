@@ -8,7 +8,10 @@ import { resolve } from 'node:path';
 /** Apply the same HTTP configuration in production and integration tests. */
 export function configureApp(app: INestApplication): void {
   app.enableCors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE'],
     credentials: true,
   });

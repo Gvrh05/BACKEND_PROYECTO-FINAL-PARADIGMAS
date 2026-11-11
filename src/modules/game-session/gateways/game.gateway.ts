@@ -44,7 +44,12 @@ type GameSocket = Socket<
 >;
 
 @WebSocketGateway({
-  cors: { origin: process.env.CORS_ORIGIN?.split(',') ?? '*' },
+  cors: {
+    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173')
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean),
+  },
   namespace: '/game',
 })
 export class GameGateway

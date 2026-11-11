@@ -2,6 +2,9 @@
 
 ## Arranque coordinado
 
+Para servicios separados Railway/Netlify, usar la guía detallada
+[railway-netlify.md](railway-netlify.md).
+
 Los directorios hermanos de esta copia son `AUTH_PROYECTO-FINAL-PARADIGMAS`,
 `BACKEND_PROYECTO-FINAL-PARADIGMAS` y `FRONT_PROYECTO-FINAL_PARAGIDMAS`.
 Compose permite cambiar `AUTH_BUILD_CONTEXT` y `FRONTEND_BUILD_CONTEXT`.
