@@ -21,6 +21,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "test:persistence": "node scripts/verify-persistence.cjs",
     "db:check": "node scripts/check-database.cjs",
+    "verify:services": "node scripts/verify-services.cjs",
     "docs:validate": "node scripts/validate-openapi.mjs",
     "migration:show": "typeorm-ts-node-commonjs migration:show -d src/shared/database/data-source.ts",
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/shared/database/data-source.ts",

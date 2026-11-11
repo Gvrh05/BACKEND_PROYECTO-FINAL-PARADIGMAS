@@ -35,10 +35,8 @@ UUID; `authorId` no es editable. Cualquier usuario autenticado administra solo l
 suyo, sin una nueva restricción por rol. Un secreto ausente impide el arranque.
 
 ```powershell
-docker compose build api
-docker compose up -d postgres
-docker compose run --rm api pnpm run migration:run:prod
-docker compose up -d api
+pnpm install --frozen-lockfile
+./scripts/start.ps1
 ```
 
 Antes de desplegar, respalda la base con las herramientas de PostgreSQL y el
@@ -152,23 +150,33 @@ la URL serializada es pública y no requiere Bearer.
 ## Quiz demo y ejecución local con Compose
 
 Auth usa **usuario y contraseña**, sin correo. El seed crea (o valida) la cuenta
-`profesor_test` con `DEMO_USER_PASSWORD`. Coloca manualmente los PNG `q1.png` a
-`q10.png` en `public/seeds/`; no se generan automáticamente. `quiz-seed` los copia
-al volumen público y crea el quiz **Evaluación de Cultura General** con diez
-preguntas. El seed es idempotente.
+`profesor_test` con `DEMO_USER_PASSWORD`. Opcionalmente coloca los PNG `q1.png` a
+`q10.png` en `public/seeds/`; las preguntas sin archivo se crean sin imagen.
+`quiz-seed` crea el quiz **Evaluación de Cultura General** con diez preguntas de
+opción múltiple. El seed es idempotente y no modifica quizzes ya existentes.
 
 El quiz demo aparece junto con los quizzes propios de todas las cuentas y puede
 abrirse para ver sus preguntas, pero es de solo lectura: la API rechaza editarlo,
 borrarlo o agregarle contenido. No hace falta crear un correo ni registrar a mano
 la cuenta demo.
 
-1. Copia `.env.example` a `.env` y reemplaza las contraseñas/secreto de ejemplo.
-2. Añade manualmente `public/seeds/q1.png` … `q10.png`.
-3. Ejecuta `scripts/start.ps1` o `scripts/start.bat` en Windows.
+1. Instala Node.js 22 y pnpm 10.19, inicia Docker Desktop y ejecuta
+   `pnpm install --frozen-lockfile` en `kahoot-api`.
+2. Ejecuta `scripts/start.ps1` o `scripts/start.bat` en Windows. La primera vez,
+   el script crea `kahoot-api/.env` y `auth/.env` con secretos locales aleatorios;
+   si ya existen, los conserva. Los archivos `.env` no deben compartirse.
+3. Opcionalmente agrega `public/seeds/q1.png` … `q10.png` antes del primer seed.
 
 Compose inicia API, Auth, frontend, dos bases PostgreSQL separadas y el seed.
 Frontend: `http://localhost:5173`; API: `http://localhost:3000/kahoot-api`;
 Auth: `http://localhost:3001/auth`.
+La contraseña del usuario demo está en `DEMO_USER_PASSWORD` dentro del `.env`
+local. El quiz demo de opción múltiple sirve para explorar autoría; la partida en
+vivo actual requiere crear un cuestionario de solo preguntas Verdadero/Falso.
+Comprueba el seed con `docker compose ps -a` y `docker compose logs quiz-seed`:
+es un proceso de una sola ejecución y debe terminar con código 0.
+Con dependencias de desarrollo instaladas, ejecuta `pnpm verify:services` para
+comprobar frontend, salud de las APIs, login demo, autorización HTTP y Socket.IO.
 
 ### Operación de limpieza
 

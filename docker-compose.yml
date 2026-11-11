@@ -48,6 +48,7 @@ services:
       DB_NAME: ${AUTH_POSTGRES_DB:-auth_db}
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-kahoot-api}
+      JWT_ISSUER: ${JWT_ISSUER:-}
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
     ports:
       - "${AUTH_PORT:-3001}:3001"
@@ -128,6 +129,11 @@ services:
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-5173}:80"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     depends_on:
       api:
         condition: service_healthy

@@ -1,5 +1,5 @@
 import type { Quiz } from '../entities/quiz.entity';
-import type { Question } from '../entities/question.entity';
+import { QuestionKind, type Question } from '../entities/question.entity';
 
 export function serializeQuiz(quiz: Quiz) {
   return {
@@ -18,7 +18,7 @@ export function serializeQuestion(question: Question) {
   return {
     id: question.id,
     quizId: question.quizId,
-    ...(question.kind === 'TRUE_FALSE' && { kind: question.kind }),
+    ...(question.kind === QuestionKind.TRUE_FALSE && { kind: question.kind }),
     questionText: question.questionText,
     timeLimitSeconds: question.timeLimitSeconds,
     points: question.points,

@@ -21,6 +21,7 @@ import {
   SessionStatus,
 } from '../entities/game-session.entity';
 import { QuizzesService } from '../../quizzes/services/quizzes.service';
+import { QuestionKind } from '../../quizzes/entities/question.entity';
 import { GameSessionEvents } from '../gateways/game-session.events';
 import { getMeter, getTracer } from '../../../tracing';
 
@@ -54,7 +55,7 @@ export class GameSessionService {
       try {
         return await this.createSessionCore(hostId, quizId);
       } catch (error) {
-        span.recordException(error);
+        span.recordException(error instanceof Error ? error : String(error));
         span.setStatus({ code: 2 });
         throw error;
       } finally {
@@ -131,7 +132,7 @@ export class GameSessionService {
         this.participants.record(participants.length);
         return result;
       } catch (error) {
-        span.recordException(error);
+        span.recordException(error instanceof Error ? error : String(error));
         span.setStatus({ code: 2 });
         throw error;
       } finally {
@@ -156,7 +157,7 @@ export class GameSessionService {
       try {
         return await this.startSessionCore(roomCode, hostId);
       } catch (error) {
-        span.recordException(error);
+        span.recordException(error instanceof Error ? error : String(error));
         span.setStatus({ code: 2 });
         throw error;
       } finally {
@@ -372,7 +373,7 @@ export class GameSessionService {
     const { questions } = await this.quizzesService.findOne(hostId, quizId);
     if (
       !questions.length ||
-      questions.some(({ kind }) => kind !== 'TRUE_FALSE')
+      questions.some(({ kind }) => kind !== QuestionKind.TRUE_FALSE)
     ) {
       throw new BadRequestException(
         'La partida requiere un cuestionario de solo preguntas Verdadero/Falso',

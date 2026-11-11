@@ -6,7 +6,7 @@ RUN npm install --global pnpm@10.19.0
 # Dependencies Stage
 # -------------------------------------------------------------
 FROM base AS dependencies
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # -------------------------------------------------------------

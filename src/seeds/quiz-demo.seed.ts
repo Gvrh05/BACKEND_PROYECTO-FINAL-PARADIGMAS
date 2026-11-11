@@ -115,7 +115,7 @@ async function ensureDemoUser(): Promise<AuthResponse['user']> {
   return ((await login.json()) as AuthResponse).user;
 }
 
-async function copySeedImages(): Promise<number[]> {
+async function copySeedImages(): Promise<Array<number | null>> {
   const seedDirectory = resolve(
     process.env.SEED_IMAGES_DIR || './public/seeds',
   );
@@ -125,11 +125,19 @@ async function copySeedImages(): Promise<number[]> {
   );
   await mkdir(questionDirectory, { recursive: true });
 
-  const sizes: number[] = [];
+  const sizes: Array<number | null> = [];
   for (let index = 1; index <= questions.length; index++) {
     const filename = `q${index}.png`;
     const source = join(seedDirectory, filename);
     const destination = join(questionDirectory, filename);
+    try {
+      await stat(source);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+      console.warn(`${filename} no está disponible; pregunta sin imagen.`);
+      sizes.push(null);
+      continue;
+    }
     const image = sharp(source, { limitInputPixels: 25000000 });
     const metadata = await image.metadata();
     if (metadata.format !== 'png') {
@@ -196,9 +204,11 @@ async function seed(): Promise<void> {
             questionText: definition.questionText,
             timeLimitSeconds: 20,
             points: 1000,
-            imageStorageKey: `q${index + 1}.png`,
-            imageUrl: `/uploads/questions/q${index + 1}.png`,
-            imageMimeType: 'image/png',
+            imageStorageKey: imageSizes[index] ? `q${index + 1}.png` : null,
+            imageUrl: imageSizes[index]
+              ? `/uploads/questions/q${index + 1}.png`
+              : null,
+            imageMimeType: imageSizes[index] ? 'image/png' : null,
             imageSize: imageSizes[index],
           }),
         );
@@ -215,7 +225,7 @@ async function seed(): Promise<void> {
       }
     });
     console.log(
-      `Seed creado: ${quizTitle} con 10 preguntas e imágenes locales.`,
+      `Seed creado: ${quizTitle} con 10 preguntas y ${imageSizes.filter(Boolean).length} imágenes locales.`,
     );
   } finally {
     await dataSource.destroy();
