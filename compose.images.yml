@@ -1,0 +1,25 @@
+services:
+  postgres:
+    ports: !reset []
+  auth-db:
+    ports: !reset []
+  auth:
+    build: !reset null
+    image: ${AUTH_IMAGE:-jairito980/kahoot-auth:latest}
+    ports: !reset []
+  api:
+    build: !reset null
+    image: ${BACKEND_IMAGE:-jairito980/kahoot-backend:latest}
+    ports: !reset []
+    volumes: !override
+      - uploads_data:/app/uploads
+  quiz-seed:
+    build: !reset null
+    image: ${BACKEND_IMAGE:-jairito980/kahoot-backend:latest}
+    volumes: !override
+      - uploads_data:/app/uploads
+  frontend:
+    build: !reset null
+    image: ${FRONTEND_IMAGE:-jairito980/kahoot-frontend:latest}
+    ports: !override
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:80"

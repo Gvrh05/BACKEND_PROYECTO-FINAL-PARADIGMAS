@@ -9,10 +9,19 @@ OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 OTEL_EXPORTER_OTLP_ENDPOINT=https://otlp-gateway-REGION.grafana.net/otlp
 OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic%20CREDENCIAL
 OTEL_METRICS_EXPORTER=otlp
-OTEL_TRACES_EXPORTER=otlp
+OTEL_TRACES_EXPORTER=none
 OTEL_METRIC_EXPORT_INTERVAL=10000
+FRONTEND_HEALTH_URL=http://frontend/
 ```
 
-Usa el endpoint y encabezado exactos de la instancia. Reinicia la API, importa `live-gameplay-dashboard.json` y selecciona la fuente Prometheus de Grafana Cloud. Juega una ronda, reenvía una respuesta y vuelve a entrar a la sala. Revisa los últimos 30 minutos. Para la defensa, usa estas variables en la API desplegada y cambia el nombre del entorno a `demo`. El servicio Auth debe instrumentarse con su configuración propia y un nombre distinto.
+Configura el endpoint y el encabezado exactos en los secretos del entorno de despliegue. Compose transmite los ajustes OTLP a la API y Auth, con nombres de servicio `kahoot-game-session` y `profelink-auth`. Si la plataforma los ejecuta por separado, configura las variables OTLP en cada servicio y usa `OTEL_SERVICE_NAME=profelink-auth` en Auth. Para la defensa, configura `OTEL_DEPLOYMENT_ENVIRONMENT=demo` en ambos.
 
-Si aún no hay una instancia, se puede verificar la emisión contra un receptor OTLP temporal. El tablero importado en Cloud requiere credenciales y tráfico reales.
+Reinicia ambos servicios, importa `live-gameplay-dashboard.json` y selecciona la fuente Prometheus de Grafana Cloud. En **Explore**, busca `auth_http_requests_total` y `game_answers_total` para confirmar que llegaron las dos fuentes. Haz un inicio de sesión válido, otro con contraseña incorrecta y una partida con una reconexión y una respuesta rechazada. Comprueba que suban los contadores y que aparezca la latencia. Guarda el enlace y una captura del tablero como evidencia de la demo.
+
+Auth registra el método, la plantilla de la ruta y el código HTTP de las solicitudes completadas. Los paneles muestran tráfico, errores HTTP y latencia p95. La emisión se puede comprobar antes de configurar Grafana Cloud enviando OTLP a un receptor temporal.
+
+La API comprueba la disponibilidad HTTP del frontend con `FRONTEND_HEALTH_URL`
+y exporta `frontend_http_up` como métrica OpenTelemetry. En Compose se
+comprueba el servicio interno; para verificar la ruta pública desde la API,
+usar la URL HTTPS como destino. El panel indica 1 cuando responde con éxito y 0
+si la petición falla. La medición corresponde a disponibilidad HTTP.
