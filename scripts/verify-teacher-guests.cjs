@@ -48,14 +48,19 @@ async function main() {
   assert.equal(profile.role, 'MASTER');
   assert.equal(profile.isSystem, true);
   await request(`/auth/users/${profile.id}`, { method: 'PATCH', token: master, body: { active: false }, status: 403 });
-  await request('/auth/register', { method: 'POST', body: { username: 'forbidden', password: 'forbidden123', role: 'MASTER' }, status: [403, 404] });
+  await request('/auth/register', { method: 'POST', body: { username: 'forbidden', password: 'forbidden123', role: 'MASTER' }, status: 400 });
   const suffix = randomBytes(4).toString('hex');
   const password = randomBytes(20).toString('hex');
-  for (const prefix of ['qa', 'qb']) {
-    const user = await request('/auth/users', { method: 'POST', token: master, body: { username: `${prefix}_${suffix}`, password }, status: 201 });
-    assert(!user.accessToken && !user.passwordHash);
-    created.push(user);
-  }
+  const teacher = await request('/auth/users', {
+    method: 'POST', token: master, body: { username: `qa_${suffix}`, password }, status: 201,
+  });
+  created.push(teacher);
+  const registration = { username: `qb_${suffix}`, password };
+  const registered = await request('/auth/register', { method: 'POST', body: registration, status: 201 });
+  created.push(registered);
+  assert.equal(registered.role, 'PROFESOR');
+  assert(!registered.accessToken && !registered.passwordHash);
+  await request('/auth/register', { method: 'POST', body: registration, status: 409 });
   const professor = (await login(created[0].username, password)).accessToken;
   const other = (await login(created[1].username, password)).accessToken;
   await request('/auth/users', { token: professor, status: 403 });
@@ -79,6 +84,13 @@ async function main() {
   }
   const room = await request('/kahoot-api/game-sessions', { method: 'POST', token: professor, body: { quizId: quiz.id }, status: 201 });
   assert(room.invitationId && room.roomCode);
+  const pinJoin = await request(`/kahoot-api/game-sessions/${room.roomCode}/join`, {
+    method: 'POST', token: other, body: {}, status: 201,
+  });
+  assert.equal(pinJoin.player.userId, registered.id);
+  const pinPlayer = await connect({ token: other });
+  const pinLobby = await command(pinPlayer, 'join-session', { roomCode: room.roomCode }, 'session-state');
+  assert(pinLobby.participants.some((participant) => participant.userId === registered.id && participant.connected));
   const invitation = `/kahoot-api/public/invitations/${room.invitationId}`;
   const metadata = await request(invitation);
   assert.equal(metadata.roomCode, room.roomCode);
@@ -115,7 +127,7 @@ async function main() {
   const final = await finished;
   assert.equal(final.scores.find((p) => p.playerName === guest.username).score, 1);
   const result = await request(`/kahoot-api/results/${room.roomCode}`, { token: professor });
-  assert.equal(result.totalPlayers, 1);
+  assert.equal(result.totalPlayers, 2);
   await request(`/kahoot-api/results/${room.roomCode}`, { token: other, status: 404 });
   await request(`/kahoot-api/results/${room.roomCode}`, { token: guest.guestToken, status: 401 });
   await request(invitation, { status: [404, 410] });

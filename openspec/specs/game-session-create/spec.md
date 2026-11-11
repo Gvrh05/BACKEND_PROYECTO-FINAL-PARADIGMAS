@@ -51,7 +51,7 @@ La pantalla del host SHALL mostrar sus quizzes disponibles, un botón grande par
 - **THEN** el host ve el código retornado y el lobby correspondiente a esa sala
 
 ### Requirement: Identificación de demo exclusiva de desarrollo
-Solo en modo DEV el frontend SHALL ofrecer `/dev-login` y dos botones en el placeholder `/login` para generar JWT HS256 client-side de test-host-id/test-player-id con una clave pública de ejemplo claramente marcada DEV ONLY. SHALL guardar token/user en localStorage, sin formulario de contraseña, sin integrar el Auth Service ni usar secretos reales en el frontend. Producción SHALL excluir ruta, botones, módulo de firma y clave de demo; `/login` SHALL conservar únicamente el aviso de integración pendiente.
+En desarrollo, `/dev-login` SHALL ofrecer dos identidades de prueba con JWT HS256 de ejemplo. El token y el usuario SHALL permanecer en la sesión de su pestaña. El build de producción SHALL excluir la ruta de demo y su módulo de firma. La ruta `/login` SHALL usar el servicio Auth.
 
 #### Scenario: Dos identidades de demo
 - **WHEN** dos perfiles de navegador en modo DEV eligen respectivamente host y player

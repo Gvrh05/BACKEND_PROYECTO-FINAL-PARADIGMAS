@@ -16,4 +16,26 @@ if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT?.trim()) {
         process.env.OTEL_DEPLOYMENT_ENVIRONMENT || 'local',
     },
   });
+
+  const frontendUrl = process.env.FRONTEND_HEALTH_URL?.trim();
+  if (frontendUrl) {
+    const frontendUp = getMeter(
+      'profelink-frontend-probe',
+    ).createObservableGauge('frontend_http_up', {
+      description: 'Disponibilidad HTTP del frontend desde la API (1 o 0)',
+    });
+    frontendUp.addCallback(async (observation) => {
+      let up = 0;
+      try {
+        const response = await fetch(frontendUrl, {
+          signal: AbortSignal.timeout(2000),
+        });
+        await response.body?.cancel();
+        up = Number(response.ok);
+      } catch {
+        // A connection error is recorded as an unavailable frontend.
+      }
+      observation.observe(up);
+    });
+  }
 }
