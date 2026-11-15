@@ -19,19 +19,19 @@
   "refresh": "10s",
   "panels": [
     {
-      "id": 6,
+      "id": 10,
       "title": "Auth: peticiones por código HTTP",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 24 },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 48 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "refId": "A", "expr": "sum by (http_response_status_code) (increase(auth_http_requests_total[5m]))", "legendFormat": "HTTP {{http_response_status_code}}" }]
     },
     {
-      "id": 7,
+      "id": 11,
       "title": "Frontend HTTP disponible (1=sí, 0=no)",
       "description": "Probe desde Backend. No data significa que no hay señal, no equivale a 0 ni prueba caída.",
       "type": "stat",
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 24 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 48 },
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "targets": [{ "refId": "A", "expr": "min(frontend_http_up)" }],
       "fieldConfig": { "defaults": { "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] }
@@ -167,6 +167,116 @@
       "fieldConfig": {
         "defaults": {
           "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "Solicitudes de Auth por ruta",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route, method) (rate(auth_http_requests_total[$__rate_interval]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "Errores de Auth por código HTTP",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (increase(auth_http_requests_total{status=~\"4..|5..\"}[$__range]))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "title": "Latencia p95 de Auth",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(auth_http_duration_ms_bucket[$__rate_interval])))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 9,
+      "title": "Disponibilidad HTTP del frontend",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 40
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "frontend_http_up"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "max": 1
         },
         "overrides": []
       }

@@ -7,7 +7,11 @@ Incorporar participantes autenticados en salas por código con semántica idempo
 ## Requirements
 
 ### Requirement: Unión REST validada e idempotente
-`POST /game-sessions/:roomCode/join` SHALL requerir JWT, código que coincida con `^\d{6}$` y cuerpo `{ name? }` con nombre opcional no vacío al proporcionarlo. SHALL devolver 201 `{ added, player }`, con `player = { userId, name, connected }`. La identidad SHALL proceder de `sub`. La primera unión SHALL añadir; las siguientes SHALL devolver `added=false` sin duplicar ni reiniciar datos del participante. El nombre faltante SHALL usar el claim `name` si existe o un alias seguro. Los paths REST son relativos a `/kahoot-api`.
+`POST /kahoot-api/game-sessions/:roomCode/join` SHALL requerir JWT y un PIN de seis dígitos. La identidad SHALL proceder de `sub`. El nombre opcional SHALL ser válido o se usará el nombre del perfil o un alias. La ruta SHALL devolver 201 con `{ added, player }` sin duplicar la identidad.
+
+#### Scenario: Contrato de unión
+- **WHEN** el jugador envía un PIN y credenciales válidas
+- **THEN** `player` contiene `userId`, `name` y `connected`
 
 #### Scenario: Repetición de una unión
 - **WHEN** un mismo usuario se une dos veces a una sala LOBBY, incluso mediante REST y después WS
@@ -18,7 +22,11 @@ Incorporar participantes autenticados en salas por código con semántica idempo
 - **THEN** el servidor no usa ese dato para registrar ni modificar otra identidad
 
 ### Requirement: Unión WS autenticada
-El namespace `/game` SHALL aceptar exclusivamente `handshake.auth.token` de cuenta con las mismas reglas de REST o `handshake.auth.guestToken` temporal válido, nunca ambos. SHALL desconectar sockets inválidos. Tras autenticar, `join-session { roomCode }` SHALL unir el socket únicamente a la sala autorizada y notificar `participants-updated { participants }` a esa sala. La identidad SHALL proceder del handshake, no del payload. El snapshot de invitado SHALL omitir hostId, quizId y respuestas correctas antes del cierre; la cuenta anfitriona recibe su snapshot privado.
+El namespace `/game` SHALL aceptar un token de cuenta válido o una credencial temporal de invitado. `join-session { roomCode }` SHALL usar la identidad del handshake, unir el socket a la sala autorizada y emitir `participants-updated { participants }` en esa sala.
+
+#### Scenario: Snapshot del invitado
+- **WHEN** un invitado autenticado se suscribe a su sala
+- **THEN** el snapshot omite `hostId`, `quizId` y la respuesta correcta antes del cierre
 
 #### Scenario: Unión válida por socket
 - **WHEN** un socket autenticado emite `join-session` con un código válido en LOBBY

@@ -26,18 +26,18 @@ async function main() {
     OTEL_EXPORTER_OTLP_HEADERS: 'Authorization=Basic%20fixture-only', OTEL_EXPORTER_OTLP_METRICS_HEADERS: 'Authorization=Basic%20fixture-only',
     OTEL_EXPORTER_OTLP_PROTOCOL: 'http/protobuf', OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: 'http/protobuf',
     OTEL_METRICS_EXPORTER: 'otlp', OTEL_TRACES_EXPORTER: 'none', OTEL_LOGS_EXPORTER: 'none',
-    OTEL_METRIC_EXPORT_INTERVAL: '500', OTEL_METRIC_EXPORT_TIMEOUT: '400', OTEL_DEPLOYMENT_ENVIRONMENT: 'telemetry-fixture',
+    OTEL_METRIC_EXPORT_INTERVAL: '500', OTEL_METRIC_EXPORT_TIMEOUT: '400', OTEL_DEPLOYMENT_ENVIRONMENT: 'telemetry-fixture', OTEL_NODE_RESOURCE_DETECTORS: 'env,host,os',
     FRONTEND_HEALTH_URL: `${endpoint}/frontend` };
   const authScript = `
-    const {authMetricsMiddleware,shutdownTelemetry}=require('./dist/telemetry');
+    const {observeHttp}=require('./dist/telemetry');
     const express=require('node:module').createRequire(require.resolve('@nestjs/platform-express'))('express');
-    const app=express(); app.use(authMetricsMiddleware());
+    const app=express(); app.use(observeHttp);
     app.post('/auth/login',(req,res)=>res.status(req.headers['x-fixture-fail']?401:200).end());
     const server=app.listen(0,'127.0.0.1',async()=>{
       const url='http://127.0.0.1:'+server.address().port+'/auth/login?username=private-fixture-name';
       await fetch(url,{method:'POST',body:'private-fixture-password'});
       await fetch(url,{method:'POST',headers:{'x-fixture-fail':'true'}});
-      setTimeout(async()=>{server.close();await shutdownTelemetry();},2500);
+      setTimeout(()=>{server.close(()=>process.exit(0));},2500);
     });`;
   const apiScript = `
     const {getMeter,shutdownTelemetry}=require('./dist/tracing');

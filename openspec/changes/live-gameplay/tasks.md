@@ -31,7 +31,12 @@
 ## Evidencia local
 
 - Partida con Auth real y PostgreSQL sin Docker. Dos salas simultáneas y dos jugadores en la sala de prueba. Se comprobaron dos preguntas, la imagen, rechazo tardío y duplicado, reconexión y clasificación 2 a 0 recuperada tras reiniciar la API.
-- El receptor local de diagnóstico recibió métricas OTLP de la API. La evidencia de Grafana Cloud y de Auth espera la configuración del stack del equipo.
+- El receptor local de diagnóstico recibió métricas OTLP de `kahoot-game-session` y `profelink-auth`. Se comprobaron salas activas, solicitudes de login HTTP 200 y 401 y latencia de Auth. Los atributos de Auth se limitaron a método, plantilla de ruta y código HTTP. El tablero de Grafana Cloud mostró métricas de una partida local; queda comprobar las del despliegue público.
+- La prueba con las API actualizadas registró un perfil, rechazó un duplicado y permitió entrar al lobby con la cuenta nueva y el PIN. Jugó con dos participantes y un anfitrión en una sala, mientras otra sala permanecía aislada. El cliente HTTP independiente recuperó el resultado 2 a 0. Esta cifra corresponde a la prueba realizada, no al límite de capacidad.
+- Se verificó la exportación OTLP de `frontend_http_up=1` con el frontend local activo. La serie se confirmó en Grafana Cloud con `deployment_environment_name=local` y se guardó el panel de disponibilidad en el tablero.
+- La pila Docker Hub de referencia arrancó sin compilar y respondió al login de demo y a las comprobaciones de salud. Queda publicar y comprobar la revisión que incluye registro, Scalar y la sonda de frontend en el despliegue externo.
+- Las tres imágenes nuevas compilaron y arrancaron con el override de Compose. Se verificaron registro, PIN, acceso de invitado, revocación, partida y las dos rutas OpenAPI. Tras reiniciar Auth, API, frontend y las bases, se comprobó el mismo UUID del perfil, la imagen del cuestionario byte a byte y el registro de la partida finalizada en PostgreSQL.
+- Verificación automatizada local: Frontend 29 pruebas, Auth 12 unitarias y 12 HTTP/migración, Backend 116 unitarias, 72 e2e y 5 de persistencia. OpenSpec en modo estricto y los dos contratos OpenAPI pasaron. La prueba física multidispositivo y la recepción de métricas de producción siguen pendientes.
 
 ## Workflow follow-up
 
