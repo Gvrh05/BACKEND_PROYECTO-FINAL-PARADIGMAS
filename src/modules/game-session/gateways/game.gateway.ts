@@ -111,7 +111,12 @@ export class GameGateway
   ): Promise<void> {
     return this.enqueue(client, 'join', async () => {
       const user = await this.authenticated(client);
-      const roomCode = await this.roomCode(payload);
+      const avatarId = this.joinAvatar(payload);
+      const roomCode = await this.roomCode(
+        avatarId === undefined
+          ? payload
+          : { roomCode: (payload as { roomCode: unknown }).roomCode },
+      );
       if (client.data.guestRoom && client.data.guestRoom !== roomCode)
         throw new ForbiddenException('Invitado de otra sala');
       const snapshot = this.sessions.getSessionByCode(roomCode);
@@ -123,6 +128,7 @@ export class GameGateway
         userId: user.sub,
         name: existing?.name ?? user.name,
         socketId: client.id,
+        avatarId,
       });
       const previousRoom = client.data.roomCode;
       if (previousRoom && previousRoom !== roomCode) {
@@ -160,6 +166,48 @@ export class GameGateway
         throw new ForbiddenException('Solo cuentas anfitrionas');
       const roomCode = await this.roomCode(payload);
       await this.sessions.startSession(roomCode, user.sub);
+    });
+  }
+
+  private joinAvatar(payload: unknown): number | undefined {
+    if (!payload || typeof payload !== 'object' || !('avatarId' in payload))
+      return undefined;
+    if (
+      Object.keys(payload).some(
+        (key) => !['roomCode', 'avatarId'].includes(key),
+      ) ||
+      typeof payload.avatarId !== 'number' ||
+      !Number.isInteger(payload.avatarId) ||
+      payload.avatarId < 0 ||
+      payload.avatarId > 9
+    )
+      throw new BadRequestException('Avatar inválido');
+    return payload.avatarId;
+  }
+
+  @SubscribeMessage('set-ready')
+  ready(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: unknown,
+  ) {
+    return this.enqueue(client, 'ready', async () => {
+      const user = await this.authenticated(client);
+      if (
+        !payload ||
+        typeof payload !== 'object' ||
+        !('ready' in payload) ||
+        !('roomCode' in payload) ||
+        typeof payload.ready !== 'boolean' ||
+        Object.keys(payload).some((key) => !['roomCode', 'ready'].includes(key))
+      )
+        throw new BadRequestException('Estado de preparación inválido');
+      const roomCode = await this.roomCode({ roomCode: payload.roomCode });
+      if (
+        client.data.roomCode !== roomCode ||
+        (client.data.guestRoom && client.data.guestRoom !== roomCode)
+      )
+        throw new ForbiddenException('Primero debes suscribirte a esta sala');
+      this.sessions.setReady(roomCode, user.sub, payload.ready);
     });
   }
 
@@ -290,7 +338,7 @@ export class GameGateway
 
   private enqueue(
     client: GameSocket,
-    operation: 'join' | 'start' | 'answer' | 'next',
+    operation: 'join' | 'start' | 'answer' | 'next' | 'ready',
     action: () => Promise<void>,
   ): Promise<void> {
     this.wsEvents.add(1, { event: operation });
@@ -303,7 +351,7 @@ export class GameGateway
 
   private sendError(
     client: GameSocket,
-    operation: 'join' | 'start' | 'answer' | 'next',
+    operation: 'join' | 'start' | 'answer' | 'next' | 'ready',
     error: unknown,
   ): void {
     let payload = {

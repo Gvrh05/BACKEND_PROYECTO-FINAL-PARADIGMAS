@@ -13,6 +13,7 @@ export class LiveGame {
   version = 0;
   closesAt = 0;
   closed = false;
+  eligiblePlayers = 0;
   timer?: ReturnType<typeof setTimeout>;
   readonly responses = new Map<string, boolean>();
   readonly scores = new Map<string, number>();
@@ -72,6 +73,8 @@ export class LiveGame {
       serverNow: Date.now(),
       closesAt: this.closesAt,
       closed: this.closed,
+      votesReceived: this.responses.size,
+      eligiblePlayers: this.eligiblePlayers,
       ...(this.closed && { correctAnswer }),
       ...(userId !== undefined && {
         answered: answer !== undefined,

@@ -65,4 +65,27 @@ describe('LiveGame', () => {
       'WRONG_QUESTION',
     );
   });
+
+  it('counts only accepted unique answers and resets the count for the next question', () => {
+    const round = game();
+    round.eligiblePlayers = 2;
+    expect(round.snapshot()).toMatchObject({
+      votesReceived: 0,
+      eligiblePlayers: 2,
+    });
+    round.submit('ana', 'one', false, 2000);
+    expect(round.snapshot()).toMatchObject({
+      votesReceived: 1,
+      eligiblePlayers: 2,
+    });
+    expect(() => round.submit('ana', 'one', true, 2001)).toThrow();
+    expect(round.snapshot().votesReceived).toBe(1);
+    round.close();
+    round.index++;
+    round.open(6000);
+    expect(round.snapshot()).toMatchObject({
+      votesReceived: 0,
+      eligiblePlayers: 2,
+    });
+  });
 });

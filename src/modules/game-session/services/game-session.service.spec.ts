@@ -13,6 +13,7 @@ import {
 import { QuizzesService } from '../../quizzes/services/quizzes.service';
 import { GameSessionService } from './game-session.service';
 import { GameSessionEvents } from '../gateways/game-session.events';
+import { LiveGame } from '../engine/live-game';
 
 describe('GameSessionService', () => {
   let manager: SessionManager;
@@ -96,8 +97,69 @@ describe('GameSessionService', () => {
       }),
     );
     expect(service.listParticipants(created.roomCode)).toEqual([
-      { userId: 'host', name: 'Anfitrión', connected: false },
+      {
+        userId: 'host',
+        name: 'Anfitrión',
+        connected: false,
+        avatarId: 0,
+        ready: false,
+        score: 0,
+        isHost: true,
+      },
     ]);
+  });
+
+  it('broadcasts authoritative vote counts once and includes avatars in final results', async () => {
+    const room = manager.createSession('host', 'quiz');
+    manager.addPlayer(room.pin, {
+      userId: 'p',
+      name: 'Ada',
+      avatarId: 7,
+      socketId: 'socket',
+    });
+    const game = new LiveGame([
+      {
+        id: 'question',
+        questionText: 'Prueba',
+        imageUrl: null,
+        timeLimitSeconds: 30,
+        correctAnswer: false,
+      },
+    ]);
+    game.eligiblePlayers = 1;
+    game.open(Date.now());
+    room.liveGame = game;
+    room.status = SessionStatus.IN_PROGRESS;
+    const broadcast = jest.spyOn(GameSessionEvents.prototype, 'toRoom');
+    try {
+      await service.submitAnswer(room.pin, 'p', 'question', false);
+      expect(broadcast).toHaveBeenCalledWith(room.pin, 'answer-progress', {
+        roomCode: room.pin,
+        game: expect.objectContaining({
+          votesReceived: 1,
+          eligiblePlayers: 1,
+        }) as unknown,
+      });
+      await expect(
+        service.submitAnswer(room.pin, 'p', 'question', true),
+      ).rejects.toThrow('DUPLICATE_ANSWER');
+      expect(broadcast).toHaveBeenCalledTimes(1);
+      expect(game.snapshot()).not.toHaveProperty('correctAnswer');
+      game.close();
+      expect(
+        service.listParticipants(room.pin).find((p) => p.userId === 'p')?.score,
+      ).toBe(1);
+      await service.nextQuestion(room.pin, 'host', 'question');
+      expect(broadcast).toHaveBeenCalledWith(
+        room.pin,
+        'game-finished',
+        expect.objectContaining({
+          scores: [{ playerName: 'Ada', score: 1, rank: 1, avatarId: 7 }],
+        }),
+      );
+    } finally {
+      broadcast.mockRestore();
+    }
   });
 
   it('keeps a pending save private and releases its reservation on failure', async () => {

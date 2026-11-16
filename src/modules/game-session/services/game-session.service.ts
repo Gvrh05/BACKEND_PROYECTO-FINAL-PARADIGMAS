@@ -177,6 +177,11 @@ export class GameSessionService {
     return this.sessionManager.listPlayers(roomCode);
   }
 
+  setReady(roomCode: string, userId: string, ready: boolean) {
+    this.sessionManager.setReady(roomCode, userId, ready);
+    this.events.participantsUpdated(roomCode, this.listParticipants(roomCode));
+  }
+
   removePlayer(roomCode: string, userId: string, socketId?: string) {
     this.sessionManager.removePlayer(roomCode, userId, socketId);
     const participants = this.listParticipants(roomCode);
@@ -228,6 +233,9 @@ export class GameSessionService {
         startedAt,
       );
       session.liveGame = game;
+      game.eligiblePlayers = [...session.players.keys()].filter(
+        (id) => id !== hostId,
+      ).length;
       this.events.sessionStarted(roomCode, startedAt.toISOString());
       this.openRound(session, game);
       return { ...this.summary(session), startedAt: startedAt.toISOString() };
@@ -281,6 +289,10 @@ export class GameSessionService {
           answer,
           Date.now(),
         );
+        this.events.toRoom(roomCode, 'answer-progress', {
+          roomCode,
+          game: this.requireGame(session).snapshot(),
+        });
       });
       this.answers.add(1, { outcome: 'accepted' });
     } catch (error) {
@@ -324,6 +336,7 @@ export class GameSessionService {
           playerId: player.userId,
           playerName: player.name,
           score: game.scores.get(player.userId) ?? 0,
+          avatarId: player.avatarId ?? 0,
         }))
         .sort((a, b) => b.score - a.score);
       const result = {
@@ -347,10 +360,11 @@ export class GameSessionService {
       this.events.toRoom(roomCode, 'game-finished', {
         roomCode,
         version: game.version + 1,
-        scores: result.scores.map(({ playerName, score, rank }) => ({
+        scores: result.scores.map(({ playerName, score, rank, avatarId }) => ({
           playerName,
           score,
           rank,
+          avatarId,
         })),
       });
       this.sessionManager.removeSession(roomCode);
@@ -389,6 +403,10 @@ export class GameSessionService {
             roomCode: session.pin,
             game: game.snapshot(),
           });
+          this.events.participantsUpdated(
+            session.pin,
+            this.listParticipants(session.pin),
+          );
           for (const player of session.players.values()) {
             for (const socketId of player.socketIds) {
               this.events.toSocket(socketId, 'round-result', {

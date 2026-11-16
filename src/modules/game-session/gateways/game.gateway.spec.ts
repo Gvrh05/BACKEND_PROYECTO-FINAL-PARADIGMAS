@@ -9,7 +9,7 @@ import { GameSessionEvents } from './game-session.events';
  */
 describe('GameGateway Punto 3 integration', () => {
   const userId = 'c3e14bbe-d9d2-4c38-8a99-a741bf36d72e';
-  const sessions = { startSession: jest.fn() };
+  const sessions = { startSession: jest.fn(), setReady: jest.fn() };
   const verifier = { verify: jest.fn() };
   const events = { toSocket: jest.fn() };
   let gateway: GameGateway;
@@ -53,6 +53,27 @@ describe('GameGateway Punto 3 integration', () => {
       'host-socket',
       'error',
       expect.objectContaining({ code: 'FORBIDDEN' }),
+    );
+  });
+
+  it('updates readiness using the verified subject only in the subscribed room', async () => {
+    const client = socket();
+    client.data.roomCode = '482193';
+    await gateway.ready(client, { roomCode: '482193', ready: true });
+    expect(sessions.setReady).toHaveBeenCalledWith('482193', userId, true);
+    sessions.setReady.mockClear();
+    await gateway.ready(client, { roomCode: '111111', ready: true });
+    await gateway.ready(client, {
+      roomCode: '482193',
+      ready: true,
+      userId: 'another',
+    });
+    await gateway.ready(client, { roomCode: '482193', ready: 'true' });
+    expect(sessions.setReady).not.toHaveBeenCalled();
+    expect(events.toSocket).toHaveBeenCalledWith(
+      'host-socket',
+      'error',
+      expect.any(Object),
     );
   });
 });
