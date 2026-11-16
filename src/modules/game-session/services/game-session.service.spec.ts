@@ -13,6 +13,7 @@ import {
 import { QuizzesService } from '../../quizzes/services/quizzes.service';
 import { GameSessionService } from './game-session.service';
 import { GameSessionEvents } from '../gateways/game-session.events';
+import { LiveGame } from '../engine/live-game';
 
 describe('GameSessionService', () => {
   let manager: SessionManager;
@@ -76,6 +77,56 @@ describe('GameSessionService', () => {
     expect(manager.activeCount).toBe(0);
   });
 
+  it('closes early for the host, scores once, rejects stale/late commands and preserves the timer fallback', async () => {
+    jest.useFakeTimers();
+    const broadcast = jest.spyOn(GameSessionEvents.prototype, 'toRoom');
+    try {
+      const created = await service.createSession('host', 'quiz');
+      service.joinSession({
+        roomCode: created.roomCode,
+        userId: 'p',
+        socketId: 'socket',
+      });
+      await service.startSession(created.roomCode, 'host');
+      const game = manager.requireSession(created.roomCode).liveGame!;
+      await service.submitAnswer(created.roomCode, 'p', 'round', false);
+      await expect(
+        service.closeVoting(created.roomCode, 'p', 'round'),
+      ).rejects.toThrow('FORBIDDEN');
+      await expect(
+        service.closeVoting(created.roomCode, 'host', 'stale'),
+      ).rejects.toThrow('WRONG_QUESTION');
+      expect(game.closed).toBe(false);
+      await service.closeVoting(created.roomCode, 'host', 'round');
+      expect(game.closed).toBe(true);
+      expect(game.scores.get('p')).toBe(25);
+      await service.closeVoting(created.roomCode, 'host', 'round');
+      await jest.advanceTimersByTimeAsync(21000);
+      expect(game.scores.get('p')).toBe(25);
+      expect(
+        broadcast.mock.calls.filter(([, event]) => event === 'question-closed'),
+      ).toHaveLength(1);
+      await expect(
+        service.submitAnswer(created.roomCode, 'p', 'round', false),
+      ).rejects.toThrow('LATE_ANSWER');
+
+      const automatic = await service.createSession('host', 'quiz');
+      service.joinSession({
+        roomCode: automatic.roomCode,
+        userId: 'p',
+        socketId: 'socket2',
+      });
+      await service.startSession(automatic.roomCode, 'host');
+      await jest.advanceTimersByTimeAsync(21000);
+      expect(manager.requireSession(automatic.roomCode).liveGame?.closed).toBe(
+        true,
+      );
+    } finally {
+      broadcast.mockRestore();
+      jest.useRealTimers();
+    }
+  });
+
   it('creates and persists the room, including the host exactly once', async () => {
     const created = await service.createSession('host', 'quiz');
     expect(created).toEqual({
@@ -96,8 +147,69 @@ describe('GameSessionService', () => {
       }),
     );
     expect(service.listParticipants(created.roomCode)).toEqual([
-      { userId: 'host', name: 'Anfitrión', connected: false },
+      {
+        userId: 'host',
+        name: 'Anfitrión',
+        connected: false,
+        avatarId: 0,
+        ready: false,
+        score: 0,
+        isHost: true,
+      },
     ]);
+  });
+
+  it('broadcasts authoritative vote counts once and includes avatars in final results', async () => {
+    const room = manager.createSession('host', 'quiz');
+    manager.addPlayer(room.pin, {
+      userId: 'p',
+      name: 'Ada',
+      avatarId: 7,
+      socketId: 'socket',
+    });
+    const game = new LiveGame([
+      {
+        id: 'question',
+        questionText: 'Prueba',
+        imageUrl: null,
+        timeLimitSeconds: 30,
+        correctAnswer: false,
+      },
+    ]);
+    game.eligiblePlayers = 1;
+    game.open(Date.now());
+    room.liveGame = game;
+    room.status = SessionStatus.IN_PROGRESS;
+    const broadcast = jest.spyOn(GameSessionEvents.prototype, 'toRoom');
+    try {
+      await service.submitAnswer(room.pin, 'p', 'question', false);
+      expect(broadcast).toHaveBeenCalledWith(room.pin, 'answer-progress', {
+        roomCode: room.pin,
+        game: expect.objectContaining({
+          votesReceived: 1,
+          eligiblePlayers: 1,
+        }) as unknown,
+      });
+      await expect(
+        service.submitAnswer(room.pin, 'p', 'question', true),
+      ).rejects.toThrow('DUPLICATE_ANSWER');
+      expect(broadcast).toHaveBeenCalledTimes(1);
+      expect(game.snapshot()).not.toHaveProperty('correctAnswer');
+      game.close();
+      expect(
+        service.listParticipants(room.pin).find((p) => p.userId === 'p')?.score,
+      ).toBe(25);
+      await service.nextQuestion(room.pin, 'host', 'question');
+      expect(broadcast).toHaveBeenCalledWith(
+        room.pin,
+        'game-finished',
+        expect.objectContaining({
+          scores: [{ playerName: 'Ada', score: 25, rank: 1, avatarId: 7 }],
+        }),
+      );
+    } finally {
+      broadcast.mockRestore();
+    }
   });
 
   it('keeps a pending save private and releases its reservation on failure', async () => {

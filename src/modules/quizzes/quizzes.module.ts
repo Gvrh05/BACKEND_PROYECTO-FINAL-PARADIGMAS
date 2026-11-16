@@ -14,6 +14,7 @@ import { QuestionOwnerGuard } from './controllers/question-owner.guard';
 import { QuestionImageUploadInterceptor } from './controllers/question-image-upload.interceptor';
 import { QuestionImagesController } from './controllers/question-images.controller';
 import { FileCleanupWorker } from './services/file-cleanup.worker';
+import { PokeApiService } from './services/poke-api.service';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { FileCleanupWorker } from './services/file-cleanup.worker';
     QuestionOwnerGuard,
     QuestionImageUploadInterceptor,
     FileCleanupWorker,
+    PokeApiService,
   ],
   exports: [QuizzesService],
 })

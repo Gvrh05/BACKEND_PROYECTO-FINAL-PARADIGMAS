@@ -1,0 +1,2 @@
+## Decisions
+Generar ilustraciones propias mediante SVG rasterizado con Sharp. Incluir PNG en public/seeds sin dependencias de red. Copiar archivos con COPYFILE_EXCL para conservar los existentes. Bajo transacción y bloqueo de fila, enlazar solo preguntas del demo con enunciado exacto y todos sus metadatos de imagen vacíos. Conservar IDs, opciones, autoría e imágenes previas. Reejecutar no duplica ni sobrescribe.

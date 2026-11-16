@@ -58,7 +58,14 @@ describe('SessionManager', () => {
     });
     expect(result).toEqual({
       added: false,
-      player: { userId: 'p', name: 'First', connected: true },
+      player: {
+        userId: 'p',
+        name: 'First',
+        connected: true,
+        avatarId: 0,
+        ready: false,
+        score: 123,
+      },
     });
     expect(session.players.get('p')).toBe(player);
     expect(player.score).toBe(123);
@@ -96,6 +103,10 @@ describe('SessionManager', () => {
       userId: 'p',
       name: 'Player',
       connected: false,
+      avatarId: 0,
+      ready: false,
+      score: 0,
+      isHost: false,
     });
     expect(manager.addPlayer(pin, { userId: 'p', socketId: 's2' }).added).toBe(
       false,
@@ -135,6 +146,51 @@ describe('SessionManager', () => {
     );
     expect(() => manager.startSession('000000', 'host')).toThrow(
       NotFoundException,
+    );
+  });
+
+  it('shares a validated avatar and readiness without allowing changes to other identities', () => {
+    const room = manager.createSession('host', 'quiz');
+    const guest = manager.createGuest(room.invitationId, 'Ada');
+    manager.addPlayer(room.pin, {
+      userId: guest.participantId,
+      socketId: 'one',
+      avatarId: 9,
+    });
+    manager.setReady(room.pin, guest.participantId, true);
+    expect(
+      manager
+        .listPlayers(room.pin)
+        .find((p) => p.userId === guest.participantId),
+    ).toMatchObject({ avatarId: 9, ready: true, score: 0, isHost: false });
+    expect(() => manager.setReady(room.pin, 'other', true)).toThrow(
+      ForbiddenException,
+    );
+    expect(() => manager.setReady(room.pin, 'host', true)).toThrow(
+      ForbiddenException,
+    );
+    expect(() =>
+      manager.addPlayer(room.pin, {
+        userId: guest.participantId,
+        avatarId: 10,
+      }),
+    ).toThrow(BadRequestException);
+    manager.addPlayer(room.pin, {
+      userId: guest.participantId,
+      socketId: 'two',
+    });
+    manager.removePlayer(room.pin, guest.participantId, 'one');
+    expect(room.players.get(guest.participantId)?.ready).toBe(true);
+    manager.removePlayer(room.pin, guest.participantId, 'two');
+    expect(room.players.get(guest.participantId)?.ready).toBe(false);
+    manager.addPlayer(room.pin, {
+      userId: guest.participantId,
+      socketId: 'three',
+    });
+    expect(room.players.get(guest.participantId)?.avatarId).toBe(9);
+    manager.startSession(room.pin, 'host');
+    expect(() => manager.setReady(room.pin, guest.participantId, true)).toThrow(
+      BadRequestException,
     );
   });
 });

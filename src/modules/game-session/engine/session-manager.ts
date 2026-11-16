@@ -28,6 +28,7 @@ export interface PlayerInput {
   userId: string;
   name?: string;
   socketId?: string;
+  avatarId?: number;
 }
 
 export interface ActiveSession {
@@ -235,6 +236,13 @@ export class SessionManager implements OnModuleDestroy {
     pin: string,
     input: PlayerInput,
   ): { added: boolean; player: ParticipantDto } {
+    if (
+      input.avatarId !== undefined &&
+      (!Number.isInteger(input.avatarId) ||
+        input.avatarId < 0 ||
+        input.avatarId > 9)
+    )
+      throw new BadRequestException('Avatar inválido');
     const session = this.requireSession(pin);
     const existing = session.players.get(input.userId);
     if (
@@ -244,6 +252,7 @@ export class SessionManager implements OnModuleDestroy {
       throw new BadRequestException('La sala ya ha iniciado o finalizado');
     }
     const player = existing ?? this.newPlayer(input);
+    if (input.avatarId !== undefined) player.avatarId = input.avatarId;
     if (input.name?.trim()) player.name = input.name.trim();
     if (input.socketId) {
       player.socketIds.add(input.socketId);
@@ -272,6 +281,7 @@ export class SessionManager implements OnModuleDestroy {
       player.socketIds.clear();
     }
     player.connected = false;
+    if (session.status === SessionStatus.LOBBY) player.ready = false;
     player.socketId = '';
     if (userId === session.hostId) session.hostSocketId = '';
     if (session.status === SessionStatus.LOBBY && !player.guest)
@@ -279,9 +289,24 @@ export class SessionManager implements OnModuleDestroy {
   }
 
   listPlayers(pin: string): ParticipantDto[] {
-    return [...this.requireSession(pin).players.values()].map((player) =>
-      this.participant(player),
-    );
+    const session = this.requireSession(pin);
+    return [...session.players.values()].map((player) => ({
+      ...this.participant(player),
+      isHost: player.userId === session.hostId,
+      score: session.liveGame?.scores.get(player.userId) ?? 0,
+    }));
+  }
+
+  setReady(pin: string, userId: string, ready: boolean) {
+    const session = this.requireSession(pin);
+    const player = session.players.get(userId);
+    if (session.status !== SessionStatus.LOBBY || !session.acceptingGuests)
+      throw new BadRequestException('La sala ya inició');
+    if (!player || !player.connected || userId === session.hostId)
+      throw new ForbiddenException(
+        'Solo jugadores conectados pueden prepararse',
+      );
+    player.ready = ready;
   }
 
   assertCanStart(pin: string, hostId: string): ActiveSession {
@@ -318,6 +343,9 @@ export class SessionManager implements OnModuleDestroy {
       userId: player.userId,
       name: player.name,
       connected: player.connected,
+      avatarId: player.avatarId ?? 0,
+      ready: player.ready ?? false,
+      score: player.score,
     };
   }
 
@@ -328,6 +356,8 @@ export class SessionManager implements OnModuleDestroy {
       userId: input.userId,
       name: input.name?.trim() || 'Participante',
       connected: false,
+      avatarId: input.avatarId ?? 0,
+      ready: false,
       score: 0,
       socketId: '',
       socketIds: new Set(),

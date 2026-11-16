@@ -1013,6 +1013,18 @@
         }
       }
     },
+    "/quizzes/pokemon": {
+      "post": {
+        "summary": "Generar un cuestionario Pokémon binario a partir de PokéAPI",
+        "description": "Consulta PokéAPI al generar y persiste diez preguntas Verdadero/Falso. La partida posterior no depende del servicio externo.",
+        "tags": ["Quizzes"],
+        "responses": {
+          "201": { "$ref": "#/components/responses/QuizResource" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "503": { "description": "PokéAPI no disponible; no se crea ningún cuestionario" }
+        }
+      }
+    },
     "/quizzes/{quizId}": {
       "parameters": [
         {
