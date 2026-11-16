@@ -246,6 +246,20 @@ export class GameGateway
     });
   }
 
+  @SubscribeMessage('close-voting')
+  closeVoting(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: unknown,
+  ) {
+    return this.enqueue(client, 'close', async () => {
+      const user = await this.authenticated(client);
+      if (client.data.guestRoom)
+        throw new ForbiddenException('Solo cuentas anfitrionas');
+      const { roomCode, questionId } = this.gameCommand(client, payload);
+      await this.sessions.closeVoting(roomCode, user.sub, questionId);
+    });
+  }
+
   private gameCommand(client: GameSocket, payload: unknown) {
     if (
       !payload ||
@@ -338,7 +352,7 @@ export class GameGateway
 
   private enqueue(
     client: GameSocket,
-    operation: 'join' | 'start' | 'answer' | 'next' | 'ready',
+    operation: 'join' | 'start' | 'answer' | 'next' | 'ready' | 'close',
     action: () => Promise<void>,
   ): Promise<void> {
     this.wsEvents.add(1, { event: operation });
@@ -351,7 +365,7 @@ export class GameGateway
 
   private sendError(
     client: GameSocket,
-    operation: 'join' | 'start' | 'answer' | 'next' | 'ready',
+    operation: 'join' | 'start' | 'answer' | 'next' | 'ready' | 'close',
     error: unknown,
   ): void {
     let payload = {

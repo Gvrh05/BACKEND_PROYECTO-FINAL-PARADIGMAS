@@ -77,6 +77,56 @@ describe('GameSessionService', () => {
     expect(manager.activeCount).toBe(0);
   });
 
+  it('closes early for the host, scores once, rejects stale/late commands and preserves the timer fallback', async () => {
+    jest.useFakeTimers();
+    const broadcast = jest.spyOn(GameSessionEvents.prototype, 'toRoom');
+    try {
+      const created = await service.createSession('host', 'quiz');
+      service.joinSession({
+        roomCode: created.roomCode,
+        userId: 'p',
+        socketId: 'socket',
+      });
+      await service.startSession(created.roomCode, 'host');
+      const game = manager.requireSession(created.roomCode).liveGame!;
+      await service.submitAnswer(created.roomCode, 'p', 'round', false);
+      await expect(
+        service.closeVoting(created.roomCode, 'p', 'round'),
+      ).rejects.toThrow('FORBIDDEN');
+      await expect(
+        service.closeVoting(created.roomCode, 'host', 'stale'),
+      ).rejects.toThrow('WRONG_QUESTION');
+      expect(game.closed).toBe(false);
+      await service.closeVoting(created.roomCode, 'host', 'round');
+      expect(game.closed).toBe(true);
+      expect(game.scores.get('p')).toBe(1);
+      await service.closeVoting(created.roomCode, 'host', 'round');
+      await jest.advanceTimersByTimeAsync(21000);
+      expect(game.scores.get('p')).toBe(1);
+      expect(
+        broadcast.mock.calls.filter(([, event]) => event === 'question-closed'),
+      ).toHaveLength(1);
+      await expect(
+        service.submitAnswer(created.roomCode, 'p', 'round', false),
+      ).rejects.toThrow('LATE_ANSWER');
+
+      const automatic = await service.createSession('host', 'quiz');
+      service.joinSession({
+        roomCode: automatic.roomCode,
+        userId: 'p',
+        socketId: 'socket2',
+      });
+      await service.startSession(automatic.roomCode, 'host');
+      await jest.advanceTimersByTimeAsync(21000);
+      expect(manager.requireSession(automatic.roomCode).liveGame?.closed).toBe(
+        true,
+      );
+    } finally {
+      broadcast.mockRestore();
+      jest.useRealTimers();
+    }
+  });
+
   it('creates and persists the room, including the host exactly once', async () => {
     const created = await service.createSession('host', 'quiz');
     expect(created).toEqual({

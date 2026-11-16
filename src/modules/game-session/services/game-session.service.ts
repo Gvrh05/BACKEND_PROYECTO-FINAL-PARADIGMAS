@@ -373,6 +373,41 @@ export class GameSessionService {
     });
   }
 
+  async closeVoting(roomCode: string, hostId: string, questionId: string) {
+    return this.exclusive(roomCode, () => {
+      const session = this.sessionManager.requireSession(roomCode);
+      if (session.hostId !== hostId)
+        throw gameError(
+          'FORBIDDEN',
+          'Solo el anfitrión puede cerrar la votación',
+        );
+      const game = this.requireGame(session);
+      if (game.question.id !== questionId)
+        throw gameError('WRONG_QUESTION', 'La pregunta ya cambió');
+      // Same idempotent close/scoring path as the timer. Never score twice.
+      if (game.close()) this.publishClosedRound(session, game);
+    });
+  }
+
+  private publishClosedRound(session: ActiveSession, game: LiveGame) {
+    this.events.toRoom(session.pin, 'question-closed', {
+      roomCode: session.pin,
+      game: game.snapshot(),
+    });
+    this.events.participantsUpdated(
+      session.pin,
+      this.listParticipants(session.pin),
+    );
+    for (const player of session.players.values()) {
+      for (const socketId of player.socketIds) {
+        this.events.toSocket(socketId, 'round-result', {
+          roomCode: session.pin,
+          game: game.snapshot(player.userId),
+        });
+      }
+    }
+  }
+
   private requireGame(session: ActiveSession): LiveGame {
     if (session.status !== SessionStatus.IN_PROGRESS || !session.liveGame) {
       throw gameError(
@@ -399,22 +434,7 @@ export class GameSessionService {
             !game.close()
           )
             return;
-          this.events.toRoom(session.pin, 'question-closed', {
-            roomCode: session.pin,
-            game: game.snapshot(),
-          });
-          this.events.participantsUpdated(
-            session.pin,
-            this.listParticipants(session.pin),
-          );
-          for (const player of session.players.values()) {
-            for (const socketId of player.socketIds) {
-              this.events.toSocket(socketId, 'round-result', {
-                roomCode: session.pin,
-                game: game.snapshot(player.userId),
-              });
-            }
-          }
+          this.publishClosedRound(session, game);
         }).catch((error: unknown) => {
           this.logger.error(
             'Falló el cierre de una ronda',
