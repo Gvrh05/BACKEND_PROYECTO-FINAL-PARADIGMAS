@@ -346,7 +346,7 @@ export class GameSessionService {
         totalPlayers: scores.length,
         scores: scores.map((player) => ({
           ...player,
-          correctAnswersCount: player.score,
+          correctAnswersCount: game.correctCounts.get(player.playerId) ?? 0,
           rank: scores.findIndex(({ score }) => score === player.score) + 1,
         })),
       };

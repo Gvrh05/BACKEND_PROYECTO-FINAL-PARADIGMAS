@@ -99,10 +99,10 @@ describe('GameSessionService', () => {
       expect(game.closed).toBe(false);
       await service.closeVoting(created.roomCode, 'host', 'round');
       expect(game.closed).toBe(true);
-      expect(game.scores.get('p')).toBe(1);
+      expect(game.scores.get('p')).toBe(25);
       await service.closeVoting(created.roomCode, 'host', 'round');
       await jest.advanceTimersByTimeAsync(21000);
-      expect(game.scores.get('p')).toBe(1);
+      expect(game.scores.get('p')).toBe(25);
       expect(
         broadcast.mock.calls.filter(([, event]) => event === 'question-closed'),
       ).toHaveLength(1);
@@ -198,13 +198,13 @@ describe('GameSessionService', () => {
       game.close();
       expect(
         service.listParticipants(room.pin).find((p) => p.userId === 'p')?.score,
-      ).toBe(1);
+      ).toBe(25);
       await service.nextQuestion(room.pin, 'host', 'question');
       expect(broadcast).toHaveBeenCalledWith(
         room.pin,
         'game-finished',
         expect.objectContaining({
-          scores: [{ playerName: 'Ada', score: 1, rank: 1, avatarId: 7 }],
+          scores: [{ playerName: 'Ada', score: 25, rank: 1, avatarId: 7 }],
         }),
       );
     } finally {
