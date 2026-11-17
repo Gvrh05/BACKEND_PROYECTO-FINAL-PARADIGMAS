@@ -240,7 +240,7 @@ export class SessionManager implements OnModuleDestroy {
       input.avatarId !== undefined &&
       (!Number.isInteger(input.avatarId) ||
         input.avatarId < 0 ||
-        input.avatarId > 9)
+        input.avatarId > 14)
     )
       throw new BadRequestException('Avatar inválido');
     const session = this.requireSession(pin);

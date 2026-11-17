@@ -79,6 +79,7 @@ export class GameSessionController {
       roomCode,
       userId: request.user.sub,
       name: body.name ?? request.user.name,
+      avatarId: request.user.avatarId,
     });
   }
 

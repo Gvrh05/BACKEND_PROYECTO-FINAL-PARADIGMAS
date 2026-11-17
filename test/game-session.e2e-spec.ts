@@ -16,6 +16,7 @@ import { GameGateway } from '../src/modules/game-session/gateways/game.gateway';
 import { GameSessionEvents } from '../src/modules/game-session/gateways/game-session.events';
 import { SessionManager } from '../src/modules/game-session/engine/session-manager';
 import { GameSessionEntity } from '../src/modules/game-session/entities/game-session.entity';
+import { PokeApiService } from '../src/modules/quizzes/services/poke-api.service';
 import { QuizzesService } from '../src/modules/quizzes/services/quizzes.service';
 import type { SessionSnapshotDto } from '../src/modules/game-session/dto/session-response.dto';
 import type { ParticipantDto } from '../src/modules/game-session/dto/participant.dto';
@@ -87,6 +88,7 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
             isSystem: false,
             credentialVersion: claims.credentialVersion,
             username: claims.name ?? 'Participante',
+            ...(claims.sub === identity('player') && { avatarId: 14 }),
           }),
         ),
       );
@@ -126,6 +128,7 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
         GameGateway,
         GameSessionEvents,
         QuizzesService,
+        PokeApiService,
         {
           provide: DataSource,
           useValue: {
@@ -296,7 +299,14 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
       .expect(201);
     expect(first.body).toEqual({
       added: true,
-      player: { userId: identity('player'), name: 'Player', connected: false },
+      player: {
+        userId: identity('player'),
+        name: 'Player',
+        connected: false,
+        avatarId: 14,
+        ready: false,
+        score: 0,
+      },
     });
     const second = await request(app.getHttpServer())
       .post(joinRoute)
@@ -616,7 +626,15 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
     expect(
       state.participants.filter((p) => p.userId === identity('player')),
     ).toEqual([
-      { userId: identity('player'), name: 'Participante', connected: true },
+      {
+        userId: identity('player'),
+        name: 'Participante',
+        connected: true,
+        avatarId: 14,
+        ready: false,
+        score: 0,
+        isHost: false,
+      },
     ]);
   });
 
@@ -673,6 +691,10 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
             userId: identity('test-host-id'),
             name: 'Anfitrión',
             connected: true,
+            avatarId: 0,
+            ready: false,
+            score: 0,
+            isHost: true,
           },
         ],
       },
@@ -817,7 +839,7 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
       manager
         .requireSession(roomCode)
         .liveGame!.scores.get(guest.participantId),
-    ).toBe(1);
+    ).toBe(25);
     const finished = next(reconnected, 'game-finished');
     host.emit('next-question', { roomCode, questionId: quizId });
     await finished;
