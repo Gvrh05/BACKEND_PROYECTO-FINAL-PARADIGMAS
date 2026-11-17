@@ -10,7 +10,7 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { randomInt, randomUUID, randomBytes, createHash } from 'node:crypto';
-import type { LiveGame } from './live-game';
+import type { LiveGame, ScoringMode } from './live-game';
 import { GamePhase } from '../dto/game-state.dto';
 import { ParticipantDto } from '../dto/participant.dto';
 import { SessionStatus } from '../entities/game-session.entity';
@@ -32,6 +32,7 @@ export interface PlayerInput {
 }
 
 export interface ActiveSession {
+  scoringMode?: ScoringMode;
   id: string;
   invitationId: string;
   name: string;

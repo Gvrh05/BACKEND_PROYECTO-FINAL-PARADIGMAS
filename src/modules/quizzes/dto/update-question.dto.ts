@@ -44,7 +44,7 @@ export class UpdateQuestionDto {
   @ValidateIf((_, value: unknown) => value !== undefined)
   @IsArray()
   @ArrayMinSize(2)
-  @ArrayMaxSize(4)
+  @ArrayMaxSize(5)
   @Validate(ExactlyOneCorrect)
   @ValidateNested({ each: true })
   @Type(() => QuestionOptionDto)

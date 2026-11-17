@@ -132,7 +132,7 @@ export class QuestionsService {
         ? options.length !== 2 ||
           !labels.has('Verdadero') ||
           !labels.has('Falso')
-        : options.length !== 4
+        : options.length < 2 || options.length > 5
     ) {
       throw new BadRequestException(
         'Opciones incompatibles con el tipo de pregunta',

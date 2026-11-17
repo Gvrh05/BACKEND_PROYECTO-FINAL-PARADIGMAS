@@ -224,10 +224,10 @@ export class GameGateway
         client,
         payload,
       );
-      if (typeof answer !== 'boolean')
+      if (typeof answer !== 'boolean' && typeof answer !== 'number')
         throw new WsException({
           code: 'INVALID_ANSWER',
-          message: 'Envía Verdadero o Falso',
+          message: 'Selecciona una respuesta válida',
         });
       await this.sessions.submitAnswer(roomCode, user.sub, questionId, answer);
       this.events.toSocket(client.id, 'answer-accepted', {

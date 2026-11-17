@@ -107,6 +107,25 @@ describe('AppController (e2e)', () => {
       .auth(harness.tokenA, { type: 'bearer' })
       .send({ questionText: 'Editada' })
       .expect(200);
+    const fiveOptions = questionBody().options.map((option) => ({
+      ...option,
+      isCorrect: false,
+    }));
+    fiveOptions.push({ text: 'Opción 5', isCorrect: true });
+    const five = await api
+      .post(route)
+      .auth(harness.tokenA, { type: 'bearer' })
+      .send({ ...questionBody(), options: fiveOptions })
+      .expect(201);
+    const stored = await api
+      .get(`${route}/${five.body.id}`)
+      .auth(harness.tokenA, { type: 'bearer' })
+      .expect(200);
+    expect(stored.body.options).toHaveLength(5);
+    expect(stored.body.options[4]).toMatchObject({
+      text: 'Opción 5',
+      isCorrect: true,
+    });
     const binary = await api
       .post(route)
       .auth(harness.tokenA, { type: 'bearer' })
