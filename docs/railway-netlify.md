@@ -96,3 +96,8 @@ reconectar y terminar. Consultar el resultado como anfitrión desde el cliente
 independiente `scripts/read-result.mjs`. Confirmar CORS HTTP y Socket.IO sin errores,
 URLs de imágenes HTTPS y aislamiento de salas. Esa prueba pública sigue pendiente
 hasta tener URL de backend y acceso de despliegue; no se reemplaza por tests locales.
+
+Al publicar los quizzes iniciales, desplegar el último commit de la rama configurada
+en Railway. Un redeploy de una revisión anterior no incorpora cambios nuevos.
+Verificar el commit en los detalles del despliegue y comprobar que Pokémon y
+Dragon Ball aparecen al entrar al listado sin activar «Solo mis cuestionarios».
