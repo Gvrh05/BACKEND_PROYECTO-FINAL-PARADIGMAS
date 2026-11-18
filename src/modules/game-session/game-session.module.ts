@@ -9,6 +9,7 @@ import { SessionManager } from './engine/session-manager';
 import { GameSessionController } from './controllers/game-session.controller';
 import { GameSessionEvents } from './gateways/game-session.events';
 import { PublicInvitationsController } from './controllers/public-invitations.controller';
+import { GoalKickRoomImages } from './services/goal-kick-room-images.service';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { PublicInvitationsController } from './controllers/public-invitations.co
     GameGateway,
     SessionManager,
     GameSessionEvents,
+    GoalKickRoomImages,
   ],
   controllers: [GameSessionController, PublicInvitationsController],
   exports: [GameSessionService, SessionManager],

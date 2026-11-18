@@ -26,6 +26,9 @@ import { randomUUID } from 'node:crypto';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtAuthGuard } from '../src/shared/guards/jwt-auth.guard';
 import { PublicInvitationsController } from '../src/modules/game-session/controllers/public-invitations.controller';
+import { GoalKickRoomImages } from '../src/modules/game-session/services/goal-kick-room-images.service';
+import sharp from 'sharp';
+import { PokeApiService } from '../src/modules/quizzes/services/poke-api.service';
 
 /** Transport e2e: real Nest controllers/gateway/JWT/services, controlled repositories.
  * Real Postgres is covered separately by scripts/verify-phase-b-{rest,ws}.cjs.
@@ -124,11 +127,12 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
       providers: [
         { provide: APP_GUARD, useClass: JwtAuthGuard },
         GameSessionService,
+        GoalKickRoomImages,
         SessionManager,
         GameGateway,
         GameSessionEvents,
         QuizzesService,
-        PokeApiService,
+        { provide: PokeApiService, useValue: { getStarterFacts: jest.fn() } },
         {
           provide: DataSource,
           useValue: {
@@ -268,6 +272,7 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
   it('requires JWT for every REST route, including create', async () => {
     for (const [method, route] of [
       ['post', ''],
+      ['post', '/goal-kick'],
       ['get', '/available-quizzes'],
       ['get', '/123456'],
       ['get', '/123456/participants'],
@@ -279,6 +284,127 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
         .send({})
         .expect(401);
     }
+  });
+
+  it('creates standalone football with metadata/photo, no quiz, and sanitized guest snapshots', async () => {
+    const lookup = jest.spyOn(app.get(QuizzesService), 'findOneByOwner');
+    const photo = await sharp({
+      create: { width: 32, height: 20, channels: 3, background: '#153848' },
+    })
+      .png()
+      .toBuffer();
+    const response = await request(app.getHttpServer())
+      .post(`${prefix}/goal-kick`)
+      .auth(jwt(), { type: 'bearer' })
+      .field('name', '  Copa de la clase  ')
+      .field('description', '  Un recreo de fútbol  ')
+      .attach('image', photo, {
+        filename: 'cover.png',
+        contentType: 'image/png',
+      })
+      .expect(201);
+    const roomCode = response.body.roomCode as string;
+    expect(response.body).toMatchObject({
+      activity: 'GOAL_KICK',
+      quizId: null,
+      roomDetails: {
+        name: 'Copa de la clase',
+        description: 'Un recreo de fútbol',
+      },
+    });
+    expect(lookup).not.toHaveBeenCalled();
+    const invitationId = response.body.invitationId as string;
+    const cover = await request(app.getHttpServer())
+      .get(
+        `/${APP_CONFIG.GLOBAL_PREFIX}${response.body.roomDetails.coverImageUrl as string}`,
+      )
+      .expect(200);
+    expect(cover.headers['content-type']).toMatch(/^image\/webp/);
+    expect(cover.headers['x-content-type-options']).toBe('nosniff');
+    expect(cover.headers['cache-control']).toBe('no-store');
+    const host = await connect();
+    expect(await join(host, roomCode)).toMatchObject({
+      activity: 'GOAL_KICK',
+      quizId: null,
+    });
+    const guestResponse = await request(app.getHttpServer())
+      .post(
+        `/${APP_CONFIG.GLOBAL_PREFIX}/public/invitations/${invitationId}/participants`,
+      )
+      .send({ username: 'Invitado fútbol' })
+      .expect(201);
+    const guest = await connect(
+      undefined,
+      guestResponse.body.guestToken as string,
+    );
+    const guestState = await join(guest, roomCode);
+    expect(guestState).toMatchObject({
+      activity: 'GOAL_KICK',
+      roomDetails: { name: 'Copa de la clase' },
+    });
+    expect(guestState).not.toHaveProperty('hostId');
+    expect(guestState).not.toHaveProperty('quizId');
+    await request(app.getHttpServer())
+      .post(`${prefix}/${roomCode}/start`)
+      .auth(jwt(), { type: 'bearer' })
+      .expect(400);
+    expect(lookup).not.toHaveBeenCalled();
+    const started = next<{ gameId: string }>(host, 'game:started');
+    host.emit('game:start-minigame', { roomCode, commandId: randomUUID() });
+    expect((await started).gameId).toBeTruthy();
+    await app.get(GameSessionService).removeSession(roomCode);
+    await request(app.getHttpServer())
+      .get(
+        `/${APP_CONFIG.GLOBAL_PREFIX}/public/invitations/${invitationId}/cover`,
+      )
+      .expect(404);
+  });
+
+  it('creates standalone football with only a name and no image or questionnaire', async () => {
+    const response = await request(app.getHttpServer())
+      .post(`${prefix}/goal-kick`)
+      .auth(jwt(), { type: 'bearer' })
+      .field('name', 'Solo fútbol')
+      .expect(201);
+    expect(response.body).toMatchObject({
+      activity: 'GOAL_KICK',
+      quizId: null,
+      roomDetails: { name: 'Solo fútbol', description: '' },
+    });
+    expect(response.body.roomDetails).not.toHaveProperty('coverImageUrl');
+  });
+
+  it('rejects blank names, extra fields, fake images and oversized covers without creating rooms', async () => {
+    await request(app.getHttpServer())
+      .post(`${prefix}/goal-kick`)
+      .auth(jwt(), { type: 'bearer' })
+      .field('name', '   ')
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(`${prefix}/goal-kick`)
+      .auth(jwt(), { type: 'bearer' })
+      .field('name', 'Fútbol')
+      .field('score', '100')
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(`${prefix}/goal-kick`)
+      .auth(jwt(), { type: 'bearer' })
+      .field('name', 'Fútbol')
+      .attach('image', Buffer.from('<svg/>'), {
+        filename: 'fake.png',
+        contentType: 'image/png',
+      })
+      .expect(415);
+    await request(app.getHttpServer())
+      .post(`${prefix}/goal-kick`)
+      .auth(jwt(), { type: 'bearer' })
+      .field('name', 'Fútbol')
+      .attach('image', Buffer.alloc(5 * 1024 * 1024 + 1), {
+        filename: 'big.png',
+        contentType: 'image/png',
+      })
+      .expect(413);
+    expect(app.get(SessionManager).activeCount).toBe(0);
   });
 
   it('creates a room with six digits, adds another user idempotently, lists two users and permits only host start', async () => {
@@ -741,6 +867,7 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
       roomCode,
       status: 'LOBBY',
       name: 'Own quiz',
+      acceptingGuests: true,
     });
     const response = await request(app.getHttpServer())
       .post(`${route}/participants`)
@@ -839,7 +966,7 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
       manager
         .requireSession(roomCode)
         .liveGame!.scores.get(guest.participantId),
-    ).toBe(25);
+    ).toBe(25); // Existing trivia rule: 20 correct + 5 before half-time.
     const finished = next(reconnected, 'game-finished');
     host.emit('next-question', { roomCode, questionId: quizId });
     await finished;

@@ -27,6 +27,10 @@ import { RoomCodeDto } from '../dto/room-code.dto';
 import { GameSessionService } from '../services/game-session.service';
 import { GameSessionEvents } from './game-session.events';
 import { getMeter } from '../../../tracing';
+import { randomUUID } from 'node:crypto';
+import { parseGoalKickCommand } from '../dto/goal-kick-command.dto';
+import type { GoalKickAction } from '../dto/goal-kick-command.dto';
+import { GoalKickError } from '../engine/goal-kick-game';
 
 interface GameSocketData {
   user?: Pick<AuthenticatedUser, 'sub' | 'name' | 'avatarId'>;
@@ -149,7 +153,12 @@ export class GameGateway
               roomCode: state.roomCode,
               status: state.status,
               participants: state.participants,
+              ...(state.activity && {
+                activity: state.activity,
+                roomDetails: state.roomDetails,
+              }),
               ...(state.game && { game: state.game }),
+              ...(state.goalKick && { goalKick: state.goalKick }),
             }
           : state,
       );
@@ -262,6 +271,110 @@ export class GameGateway
     });
   }
 
+  @SubscribeMessage('game:start-minigame')
+  startGoalKick(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: unknown,
+  ) {
+    return this.goalKick(client, 'start', payload);
+  }
+  @SubscribeMessage('game:shoot')
+  shootGoalKick(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: unknown,
+  ) {
+    return this.goalKick(client, 'shoot', payload);
+  }
+  @SubscribeMessage('game:sync')
+  syncGoalKick(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: unknown,
+  ) {
+    return this.goalKick(client, 'sync', payload);
+  }
+  @SubscribeMessage('game:cancel')
+  cancelGoalKick(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: unknown,
+  ) {
+    return this.goalKick(client, 'cancel', payload);
+  }
+  @SubscribeMessage('game:return-lobby')
+  returnGoalKick(
+    @ConnectedSocket() client: GameSocket,
+    @MessageBody() payload: unknown,
+  ) {
+    return this.goalKick(client, 'return', payload);
+  }
+  private goalKick(
+    client: GameSocket,
+    action: GoalKickAction,
+    payload: unknown,
+  ) {
+    return this.enqueue(client, 'arcade', async () => {
+      try {
+        const user = await this.authenticated(client);
+        const command = parseGoalKickCommand(action, payload);
+        if (
+          client.data.roomCode !== command.roomCode ||
+          (client.data.guestRoom && client.data.guestRoom !== command.roomCode)
+        )
+          throw new ForbiddenException('Primero debes suscribirte a esta sala');
+        if (client.data.guestRoom && !['sync', 'shoot'].includes(action))
+          throw new ForbiddenException('Solo cuentas anfitrionas');
+        const response = await this.sessions.goalKickCommand(
+          user.sub,
+          action,
+          command,
+        );
+        if ('restored' in response)
+          this.events.toSocket(
+            client.id,
+            'game:lobby-restored',
+            response.restored,
+          );
+        else
+          this.events.toSocket(client.id, 'game:state', {
+            roomCode: command.roomCode,
+            gameId: response.state.gameId,
+            eventId: randomUUID(),
+            serverNow: Date.now(),
+            state: response.state,
+          });
+      } catch (error) {
+        const commandId =
+          payload &&
+          typeof payload === 'object' &&
+          'commandId' in payload &&
+          typeof payload.commandId === 'string'
+            ? payload.commandId
+            : undefined;
+        this.events.toSocket(client.id, 'game:error', {
+          roomCode: client.data.roomCode,
+          eventId: randomUUID(),
+          serverNow: Date.now(),
+          commandId,
+          code:
+            error instanceof GoalKickError
+              ? error.code
+              : error instanceof UnauthorizedException
+                ? 'UNAUTHENTICATED'
+                : error instanceof ForbiddenException
+                  ? 'FORBIDDEN'
+                  : 'GAME_UNAVAILABLE',
+          message:
+            error instanceof GoalKickError
+              ? error.message
+              : 'No se pudo completar la operación del minijuego',
+          retryable: !(
+            error instanceof ForbiddenException ||
+            error instanceof UnauthorizedException
+          ),
+        });
+      }
+    });
+  }
+
   private gameCommand(client: GameSocket, payload: unknown) {
     if (
       !payload ||
@@ -354,7 +467,8 @@ export class GameGateway
 
   private enqueue(
     client: GameSocket,
-    operation: 'join' | 'start' | 'answer' | 'next' | 'ready' | 'close',
+    operation:
+      'join' | 'start' | 'answer' | 'next' | 'ready' | 'close' | 'arcade',
     action: () => Promise<void>,
   ): Promise<void> {
     this.wsEvents.add(1, { event: operation });
@@ -367,7 +481,8 @@ export class GameGateway
 
   private sendError(
     client: GameSocket,
-    operation: 'join' | 'start' | 'answer' | 'next' | 'ready' | 'close',
+    operation:
+      'join' | 'start' | 'answer' | 'next' | 'ready' | 'close' | 'arcade',
     error: unknown,
   ): void {
     let payload = {

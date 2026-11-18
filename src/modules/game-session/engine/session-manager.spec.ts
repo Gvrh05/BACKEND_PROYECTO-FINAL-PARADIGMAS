@@ -149,6 +149,19 @@ describe('SessionManager', () => {
     );
   });
 
+  it('accepts all five new avatar IDs while rejecting invalid values', () => {
+    const room = manager.createSession('host', 'quiz');
+    for (const avatarId of [0, 9, 10, 11, 12, 13, 14])
+      expect(
+        manager.addPlayer(room.pin, { userId: 'avatar-player', avatarId })
+          .player.avatarId,
+      ).toBe(avatarId);
+    for (const avatarId of [-1, 15, 1.5, NaN, Infinity])
+      expect(() =>
+        manager.addPlayer(room.pin, { userId: 'avatar-player', avatarId }),
+      ).toThrow(BadRequestException);
+  });
+
   it('shares a validated avatar and readiness without allowing changes to other identities', () => {
     const room = manager.createSession('host', 'quiz');
     const guest = manager.createGuest(room.invitationId, 'Ada');

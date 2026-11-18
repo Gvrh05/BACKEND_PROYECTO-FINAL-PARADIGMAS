@@ -6,8 +6,9 @@ import {
   Param,
   Post,
   Req,
+  Res,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { Public } from '../../../shared/decorators/public.decorator';
 import { GameSessionService } from '../services/game-session.service';
 
@@ -15,6 +16,21 @@ import { GameSessionService } from '../services/game-session.service';
 @Controller('public/invitations')
 export class PublicInvitationsController {
   constructor(private readonly sessions: GameSessionService) {}
+  @Get(':invitationId/cover')
+  cover(
+    @Param('invitationId') id: string,
+    @Req() request: Request,
+    @Res() response: Response,
+  ) {
+    const cover = this.sessions.roomCover(id, request.ip ?? 'unknown');
+    response
+      .set({
+        'Content-Type': 'image/webp',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      })
+      .send(cover);
+  }
   @Get(':invitationId')
   get(@Param('invitationId') id: string, @Req() request: Request) {
     return this.sessions.publicInvitation(id, request.ip ?? 'unknown');
