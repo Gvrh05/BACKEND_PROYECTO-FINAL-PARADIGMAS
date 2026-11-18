@@ -7,7 +7,7 @@ RUN npm install --global pnpm@11.11.0
 # -------------------------------------------------------------
 FROM base AS dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN --mount=type=cache,target=/pnpm/store pnpm install --frozen-lockfile --store-dir=/pnpm/store --network-concurrency=4 --fetch-timeout=120000 --fetch-retries=3
+RUN --mount=type=cache,id=s/1d9718f6-55bc-4b7e-b1a5-5f2ba3a7097f-pnpm-store,target=/pnpm/store pnpm install --frozen-lockfile --store-dir=/pnpm/store --network-concurrency=4 --fetch-timeout=120000 --fetch-retries=3
 
 # -------------------------------------------------------------
 # Build Stage
@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/pnpm/store pnpm install --frozen-lockfile --store
 FROM dependencies AS build
 COPY . .
 RUN pnpm run build
-RUN --mount=type=cache,target=/pnpm/store CI=true pnpm install --prod --offline --frozen-lockfile --store-dir=/pnpm/store
+RUN --mount=type=cache,id=s/1d9718f6-55bc-4b7e-b1a5-5f2ba3a7097f-pnpm-store,target=/pnpm/store CI=true pnpm install --prod --offline --frozen-lockfile --store-dir=/pnpm/store
 
 # -------------------------------------------------------------
 # Production Stage

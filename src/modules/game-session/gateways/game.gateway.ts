@@ -27,6 +27,7 @@ import { RoomCodeDto } from '../dto/room-code.dto';
 import { GameSessionService } from '../services/game-session.service';
 import { GameSessionEvents } from './game-session.events';
 import { getMeter } from '../../../tracing';
+import { corsOrigins } from '../../../shared/cors';
 import { randomUUID } from 'node:crypto';
 import { parseGoalKickCommand } from '../dto/goal-kick-command.dto';
 import type { GoalKickAction } from '../dto/goal-kick-command.dto';
@@ -48,12 +49,7 @@ type GameSocket = Socket<
 >;
 
 @WebSocketGateway({
-  cors: {
-    origin: (process.env.CORS_ORIGIN || 'http://localhost:5173')
-      .split(',')
-      .map((origin) => origin.trim())
-      .filter(Boolean),
-  },
+  cors: { origin: corsOrigins() },
   namespace: '/game',
 })
 export class GameGateway

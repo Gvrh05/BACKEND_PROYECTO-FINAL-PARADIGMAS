@@ -77,7 +77,8 @@ general; el exportador añade esa ruta. Redesplegar ambos.
 2. Seleccionar últimos 30 minutos, refresco 10 s.
 3. Hacer login correcto e incorrecto en la web. Crear un quiz Verdadero/Falso,
    abrir sala, entrar mediante enlace/QR en ventana privada, iniciar, responder
-   y recargar al jugador. No hay registro público: MASTER crea profesores.
+   y recargar al jugador. Las otras personas pueden crear perfil desde el registro
+   público, iniciar sesión y unirse por PIN. El enlace/QR de invitado sigue disponible.
 4. Buscar `auth_http_requests_total`, `game_answers_total` y `frontend_http_up`.
    Auth etiqueta rutas con plantillas y código HTTP, nunca usuarios ni secretos.
    El probe del frontend publica 1 con HTTP 2xx, 0 con error/timeout y no mide
@@ -97,6 +98,19 @@ Checks públicos de solo lectura, sin credenciales:
 `node scripts/verify-public-deployment.cjs`.
 Prueba real de exportación protobuf a un receptor local sin Cloud ni bases:
 compilar Auth y Backend, luego `node scripts/verify-cloud-telemetry.cjs`.
+
+## Cuenta superadministradora y registro
+
+La cuenta MASTER actual se conserva como superadministradora (por defecto
+`profesor_test`, o el valor de `DEMO_USER_USERNAME`). Su contraseña vigente se
+mantiene en el entorno privado. El bootstrap es idempotente, conserva UUID y hash
+y no crea otro MASTER ni cambia contraseñas existentes. Las instalaciones nuevas
+requieren definir `DEMO_USER_PASSWORD` como secreto antes de provisionar Auth.
+
+Las personas nuevas usan **Crear perfil**, eligen usuario/contraseña, inician sesión
+y entran a la sala por PIN. El registro siempre crea PROFESOR, nunca MASTER, y no
+permite escoger roles. MASTER conserva la gestión de cuentas. No publicar la
+contraseña administrativa en Git, imágenes de contenedor ni ejemplos.
 
 ## Evidencia pendiente
 
