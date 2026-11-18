@@ -24,6 +24,13 @@ import { QuizzesService } from '../../quizzes/services/quizzes.service';
 import { QuestionKind } from '../../quizzes/entities/question.entity';
 import { GameSessionEvents } from '../gateways/game-session.events';
 import { getMeter, getTracer } from '../../../tracing';
+import { randomUUID } from 'node:crypto';
+import { GoalKickGame, GoalKickError } from '../engine/goal-kick-game';
+import type { GoalKickChanges } from '../engine/goal-kick-game';
+import type {
+  GoalKickAction,
+  GoalKickCommand,
+} from '../dto/goal-kick-command.dto';
 
 @Injectable()
 export class GameSessionService {
@@ -66,6 +73,35 @@ export class GameSessionService {
         span.end();
       }
     });
+  }
+
+  createGoalKickRoom(
+    hostId: string,
+    name: string,
+    description = '',
+    cover?: Buffer,
+  ) {
+    if (
+      !name.trim() ||
+      name.trim().length > 150 ||
+      description.trim().length > 2000
+    )
+      throw new BadRequestException('Nombre o descripción de sala inválidos');
+    const session = this.sessionManager.createGoalKickRoom(
+      hostId,
+      name.trim(),
+      description.trim(),
+      cover,
+    );
+    this.activeSessions.record(this.sessionManager.activeCount);
+    return this.summary(session);
+  }
+
+  roomCover(invitationId: string, ip: string) {
+    this.sessionManager.rateLimit(`cover:${ip}`, 240);
+    const cover = this.sessionManager.invitation(invitationId).cover;
+    if (!cover) throw new NotFoundException('La sala no tiene foto');
+    return cover;
   }
 
   private async createSessionCore(
@@ -117,6 +153,9 @@ export class GameSessionService {
       participants: this.listParticipants(roomCode),
       ...(userId &&
         session.players.has(userId) &&
+        session.goalKick && { goalKick: this.goalKickState(session, userId) }),
+      ...(userId &&
+        session.players.has(userId) &&
         session.liveGame && {
           game: session.liveGame.snapshot(userId),
         }),
@@ -140,6 +179,11 @@ export class GameSessionService {
       roomCode: session.pin,
       status: session.status,
       name: session.name,
+      acceptingGuests: session.acceptingGuests,
+      ...(session.activity && {
+        activity: session.activity,
+        roomDetails: this.roomDetails(session),
+      }),
     };
   }
 
@@ -162,6 +206,11 @@ export class GameSessionService {
     return this.tracer.startActiveSpan('joinSession', (span) => {
       try {
         const result = this.sessionManager.addPlayer(input.roomCode, input);
+        const arcadePlayer = this.sessionManager
+          .requireSession(input.roomCode)
+          .goalKick?.players.get(input.userId);
+        if (arcadePlayer)
+          arcadePlayer.player.connected = result.player.connected;
         if (
           !result.added &&
           input.socketId &&
@@ -193,6 +242,13 @@ export class GameSessionService {
 
   removePlayer(roomCode: string, userId: string, socketId?: string) {
     this.sessionManager.removePlayer(roomCode, userId, socketId);
+    const arcadePlayer = this.sessionManager
+      .requireSession(roomCode)
+      .goalKick?.players.get(userId);
+    if (arcadePlayer)
+      arcadePlayer.player.connected =
+        this.sessionManager.requireSession(roomCode).players.get(userId)
+          ?.connected ?? false;
     const participants = this.listParticipants(roomCode);
     this.events.participantsUpdated(roomCode, participants);
     this.participants.record(participants.length);
@@ -215,6 +271,10 @@ export class GameSessionService {
   private async startSessionCore(roomCode: string, hostId: string) {
     return this.exclusive(roomCode, async () => {
       const lobby = this.sessionManager.assertCanStart(roomCode, hostId);
+      if (!lobby.quizId)
+        throw new BadRequestException(
+          'Esta sala es de Tiro al Arco y no tiene cuestionario de trivia',
+        );
       lobby.acceptingGuests = false;
       let game: LiveGame;
       try {
@@ -255,6 +315,11 @@ export class GameSessionService {
   async removeSession(roomCode: string): Promise<void> {
     await this.exclusive(roomCode, async () => {
       const session = this.sessionManager.requireSession(roomCode);
+      if (session.activity === 'GOAL_KICK') {
+        this.sessionManager.removeSession(roomCode);
+        this.activeSessions.record(this.sessionManager.activeCount);
+        return;
+      }
       const result = await this.sessions.update(
         { roomCode },
         { status: SessionStatus.FINISHED, finishedAt: new Date() },
@@ -327,6 +392,9 @@ export class GameSessionService {
       const session = this.sessionManager.requireSession(roomCode);
       if (session.hostId !== hostId)
         throw gameError('FORBIDDEN', 'Solo el anfitrión puede avanzar');
+      const quizId = session.quizId;
+      if (!quizId)
+        throw gameError('INVALID_SESSION_STATUS', 'Esta sala no tiene trivia');
       const game = this.requireGame(session);
       if (!game.closed || game.question.id !== questionId) {
         throw gameError(
@@ -351,7 +419,7 @@ export class GameSessionService {
       const result = {
         id: roomCode,
         pin: roomCode,
-        quizId: session.quizId,
+        quizId,
         totalPlayers: scores.length,
         scores: scores.map((player) => ({
           ...player,
@@ -396,6 +464,253 @@ export class GameSessionService {
       // Same idempotent close/scoring path as the timer. Never score twice.
       if (game.close()) this.publishClosedRound(session, game);
     });
+  }
+
+  async goalKickCommand(
+    userId: string,
+    action: GoalKickAction,
+    command: GoalKickCommand,
+  ) {
+    return this.exclusive(command.roomCode, () => {
+      const session = this.sessionManager.requireSession(command.roomCode);
+      const player = session.players.get(userId);
+      if (!player?.connected)
+        throw new GoalKickError(
+          'FORBIDDEN',
+          'Primero debes suscribirte a la sala',
+        );
+      this.sessionManager.rateLimit(`goal-kick:${session.id}:${userId}`, 240);
+      if (action === 'start') {
+        if (session.hostId !== userId)
+          throw new GoalKickError(
+            'FORBIDDEN',
+            'Solo el anfitrión puede iniciar',
+          );
+        if (session.goalKick?.startCommandId === command.commandId)
+          return { state: this.goalKickState(session, userId) };
+        this.sessionManager.assertCanStart(session.pin, userId);
+        if (
+          !session.acceptingGuests ||
+          ![...session.players.values()].some(
+            (p) => p.userId !== userId && p.connected,
+          )
+        )
+          throw new GoalKickError(
+            'INVALID_STATE',
+            'Se necesita otro jugador conectado y un lobby disponible',
+          );
+        const roster = [...session.players.values()]
+          .filter((p) => p.userId !== userId)
+          .map((p) => ({
+            playerId: p.userId,
+            playerName: p.name,
+            avatarId: p.avatarId ?? 0,
+            connected: p.connected,
+          }));
+        session.goalKick = new GoalKickGame(
+          randomUUID(),
+          command.commandId!,
+          roster,
+          randomUUID,
+        );
+        session.acceptingGuests = false;
+        this.events.toRoom(
+          session.pin,
+          'game:started',
+          this.goalKickEnvelope(session),
+        );
+        for (const p of session.players.values())
+          this.goalKickPrivate(session, p.userId, 'game:state');
+        this.scheduleGoalKick(session);
+        return { state: this.goalKickState(session, userId) };
+      }
+      if (
+        action === 'return' &&
+        !session.goalKick &&
+        session.lastGoalKick?.gameId === command.gameId &&
+        session.lastGoalKick?.commandId === command.commandId
+      ) {
+        if (session.hostId !== userId)
+          throw new GoalKickError(
+            'FORBIDDEN',
+            'Solo el anfitrión puede volver al lobby',
+          );
+        return {
+          restored: {
+            roomCode: session.pin,
+            gameId: command.gameId,
+            eventId: randomUUID(),
+            serverNow: Date.now(),
+          },
+        };
+      }
+      const game = session.goalKick;
+      if (!game || (command.gameId && command.gameId !== game.gameId))
+        throw new GoalKickError(
+          'STALE_GAME',
+          'La actividad ya no está disponible',
+        );
+      this.publishGoalKickChanges(session, game.advance());
+      if (action === 'shoot') {
+        if (session.hostId === userId)
+          throw new GoalKickError(
+            'FORBIDDEN',
+            'El anfitrión observa el minijuego',
+          );
+        const accepted = game.shoot(
+          userId,
+          command.attemptId!,
+          command.commandId!,
+          command.aimX!,
+          command.curve!,
+        );
+        this.goalKickPrivate(session, userId, 'game:shot-accepted', accepted);
+      } else if (action === 'cancel') {
+        if (session.hostId !== userId)
+          throw new GoalKickError(
+            'FORBIDDEN',
+            'Solo el anfitrión puede cancelar',
+          );
+        if (game.phase === 'PLAYING') {
+          game.cancel();
+          this.events.toRoom(session.pin, 'game:ended', {
+            ...this.goalKickEnvelope(session),
+            reason: 'CANCELLED',
+          });
+        }
+      } else if (action === 'return') {
+        if (session.hostId !== userId)
+          throw new GoalKickError(
+            'FORBIDDEN',
+            'Solo el anfitrión puede volver al lobby',
+          );
+        if (game.phase === 'PLAYING')
+          throw new GoalKickError(
+            'INVALID_STATE',
+            'Primero termina o cancela la actividad',
+          );
+        clearTimeout(session.goalKickTimer);
+        session.lastGoalKick = {
+          gameId: game.gameId,
+          commandId: command.commandId!,
+        };
+        session.goalKick = undefined;
+        session.acceptingGuests = true;
+        for (const [id, p] of session.players) {
+          p.ready = false;
+          if (!p.connected && !p.guest && id !== session.hostId)
+            session.players.delete(id);
+        }
+        const restored = {
+          roomCode: session.pin,
+          gameId: game.gameId,
+          eventId: randomUUID(),
+          serverNow: Date.now(),
+        };
+        this.events.toRoom(session.pin, 'game:lobby-restored', restored);
+        this.events.participantsUpdated(
+          session.pin,
+          this.listParticipants(session.pin),
+        );
+        return { restored };
+      }
+      this.scheduleGoalKick(session);
+      return { state: this.goalKickState(session, userId) };
+    });
+  }
+
+  private goalKickState(session: ActiveSession, userId: string) {
+    return {
+      ...session.goalKick!.snapshot(userId),
+      roomCode: session.pin,
+      serverNow: Date.now(),
+    };
+  }
+  private goalKickEnvelope(session: ActiveSession) {
+    const game = session.goalKick!;
+    const state = game.snapshot(session.hostId);
+    return {
+      ...state,
+      roomCode: session.pin,
+      eventId: randomUUID(),
+      serverNow: Date.now(),
+    };
+  }
+  private goalKickPrivate(
+    session: ActiveSession,
+    userId: string,
+    event: string,
+    extra: object = {},
+  ) {
+    const state = this.goalKickState(session, userId);
+    const payload = {
+      ...this.goalKickEnvelope(session),
+      ...extra,
+      revision: state.revision,
+      state,
+    };
+    for (const socketId of session.players.get(userId)?.socketIds ?? [])
+      this.events.toSocket(socketId, event, payload);
+  }
+  private publishGoalKickChanges(
+    session: ActiveSession,
+    changes: GoalKickChanges,
+  ) {
+    const game = session.goalKick!;
+    for (const [id, p] of session.players) {
+      const state = game.players.get(id);
+      if (state) state.player.connected = p.connected;
+    }
+    for (const { playerId, result } of changes.results) {
+      this.goalKickPrivate(session, playerId, 'game:shot-result', result);
+      if (result.outcome === 'GOAL') {
+        const row = game.scoreboard().find((p) => p.playerId === playerId)!;
+        this.events.toRoom(session.pin, 'game:goal', {
+          ...this.goalKickEnvelope(session),
+          ...row,
+          shotId: result.shotId,
+          pointsAwarded: result.pointsAwarded,
+        });
+        this.events.toRoom(
+          session.pin,
+          'game:scoreboard',
+          this.goalKickEnvelope(session),
+        );
+      }
+    }
+    for (const id of changes.ready)
+      this.goalKickPrivate(
+        session,
+        id,
+        'game:attempt-ready',
+        game.players.get(id)!.board,
+      );
+    if (changes.ended)
+      this.events.toRoom(session.pin, 'game:ended', {
+        ...this.goalKickEnvelope(session),
+        reason: 'TIME_UP',
+      });
+  }
+  private scheduleGoalKick(session: ActiveSession) {
+    clearTimeout(session.goalKickTimer);
+    const game = session.goalKick!;
+    const due = game.nextDue();
+    if (due === undefined) return;
+    session.goalKickTimer = setTimeout(
+      () => {
+        void this.exclusive(session.pin, () => {
+          if (
+            this.sessionManager.getSession(session.pin) !== session ||
+            session.goalKick !== game
+          )
+            return;
+          this.publishGoalKickChanges(session, game.advance());
+          this.scheduleGoalKick(session);
+        }).catch(() => this.logger.error('No se pudo actualizar Tiro al Arco'));
+      },
+      Math.max(0, due - Date.now()),
+    );
+    session.goalKickTimer.unref();
   }
 
   private publishClosedRound(session: ActiveSession, game: LiveGame) {
@@ -537,6 +852,20 @@ export class GameSessionService {
       status: session.status,
       hostId: session.hostId,
       quizId: session.quizId,
+      ...(session.activity && {
+        activity: session.activity,
+        roomDetails: this.roomDetails(session),
+      }),
+    };
+  }
+
+  private roomDetails(session: ActiveSession) {
+    return {
+      name: session.name,
+      description: session.description ?? '',
+      ...(session.cover && {
+        coverImageUrl: `/public/invitations/${session.invitationId}/cover`,
+      }),
     };
   }
 

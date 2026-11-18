@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { randomInt, randomUUID, randomBytes, createHash } from 'node:crypto';
 import type { LiveGame, ScoringMode } from './live-game';
+import type { GoalKickGame } from './goal-kick-game';
 import { GamePhase } from '../dto/game-state.dto';
 import { ParticipantDto } from '../dto/participant.dto';
 import { SessionStatus } from '../entities/game-session.entity';
@@ -39,7 +40,10 @@ export interface ActiveSession {
   expiresAt: number;
   acceptingGuests: boolean;
   pin: string;
-  quizId: string;
+  quizId: string | null;
+  activity?: 'GOAL_KICK';
+  description?: string;
+  cover?: Buffer;
   hostId: string;
   hostSocketId: string;
   createdAt: Date;
@@ -49,6 +53,9 @@ export interface ActiveSession {
   currentQuestionIndex: number;
   players: Map<string, SessionPlayer>;
   liveGame?: LiveGame;
+  goalKick?: GoalKickGame;
+  goalKickTimer?: ReturnType<typeof setTimeout>;
+  lastGoalKick?: { gameId: string; commandId: string };
 }
 
 @Injectable()
@@ -69,6 +76,8 @@ export class SessionManager implements OnModuleDestroy {
   private readonly cleanup = setInterval(() => this.sweep(), 60000).unref();
 
   onModuleDestroy() {
+    for (const session of this.sessions.values())
+      clearTimeout(session.goalKickTimer);
     clearInterval(this.cleanup);
     this.credentials.clear();
     this.limits.clear();
@@ -76,6 +85,9 @@ export class SessionManager implements OnModuleDestroy {
 
   private sweep() {
     const now = Date.now();
+    for (const session of this.sessions.values())
+      if (session.activity === 'GOAL_KICK' && session.expiresAt <= now)
+        this.removeSession(session.pin);
     for (const [hash, value] of this.credentials)
       if (
         value.expiresAt <= now ||
@@ -174,7 +186,7 @@ export class SessionManager implements OnModuleDestroy {
   }
 
   /** Reserve privately until the service has persisted the session. */
-  reserveSession(hostId: string, quizId: string): ActiveSession {
+  reserveSession(hostId: string, quizId: string | null): ActiveSession {
     const pin = this.generatePin();
     this.reservations.add(pin);
     const session: ActiveSession = {
@@ -217,6 +229,28 @@ export class SessionManager implements OnModuleDestroy {
     return this.publishSession(this.reserveSession(hostId, quizId));
   }
 
+  createGoalKickRoom(
+    hostId: string,
+    name: string,
+    description: string,
+    cover?: Buffer,
+  ): ActiveSession {
+    this.rateLimit(`goal-kick-rooms:${hostId}`, 10);
+    if (
+      [...this.sessions.values()].filter((s) => s.activity === 'GOAL_KICK')
+        .length >= 100
+    )
+      throw new ServiceUnavailableException(
+        'No hay salas de minijuego disponibles; intenta más tarde',
+      );
+    const session = this.reserveSession(hostId, null);
+    session.activity = 'GOAL_KICK';
+    session.name = name;
+    session.description = description;
+    session.cover = cover;
+    return this.publishSession(session);
+  }
+
   getSession(pin: string): ActiveSession | undefined {
     return this.sessions.get(pin);
   }
@@ -248,7 +282,8 @@ export class SessionManager implements OnModuleDestroy {
     const existing = session.players.get(input.userId);
     if (
       session.status === SessionStatus.FINISHED ||
-      (!existing && session.status !== SessionStatus.LOBBY)
+      (!existing &&
+        (session.status !== SessionStatus.LOBBY || !session.acceptingGuests))
     ) {
       throw new BadRequestException('La sala ya ha iniciado o finalizado');
     }
@@ -285,7 +320,11 @@ export class SessionManager implements OnModuleDestroy {
     if (session.status === SessionStatus.LOBBY) player.ready = false;
     player.socketId = '';
     if (userId === session.hostId) session.hostSocketId = '';
-    if (session.status === SessionStatus.LOBBY && !player.guest)
+    if (
+      session.status === SessionStatus.LOBBY &&
+      !session.goalKick &&
+      !player.guest
+    )
       session.players.delete(userId);
   }
 
@@ -318,6 +357,10 @@ export class SessionManager implements OnModuleDestroy {
       );
     if (session.status !== SessionStatus.LOBBY)
       throw new BadRequestException('La sala no está en LOBBY');
+    if (session.goalKick)
+      throw new BadRequestException(
+        'Primero vuelve al lobby desde Tiro al Arco',
+      );
     return session;
   }
 
@@ -334,6 +377,7 @@ export class SessionManager implements OnModuleDestroy {
   }
 
   removeSession(pin: string): boolean {
+    clearTimeout(this.sessions.get(pin)?.goalKickTimer);
     for (const [hash, value] of this.credentials)
       if (value.roomCode === pin) this.credentials.delete(hash);
     return this.sessions.delete(pin);
