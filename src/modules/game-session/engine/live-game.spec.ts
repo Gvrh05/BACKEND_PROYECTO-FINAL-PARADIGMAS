@@ -22,6 +22,65 @@ describe('LiveGame', () => {
     return round;
   }
 
+  it('hides the correct choice and counts numeric votes in mixed quizzes', () => {
+    const round = game();
+    round.questions.push({
+      id: 'three',
+      questionText: 'Capital de Costa Rica',
+      imageUrl: null,
+      timeLimitSeconds: 10,
+      choices: ['San José', 'Cartago', 'Limón'],
+      correctAnswer: 0,
+    });
+    round.index = 2;
+    round.open(1000);
+    expect(round.snapshot()).toMatchObject({
+      choices: ['San José', 'Cartago', 'Limón'],
+    });
+    expect(round.snapshot()).not.toHaveProperty('correctAnswer');
+    expect(round.snapshot()).not.toHaveProperty('choiceVotes');
+    expect(() => round.submit('ana', 'three', true, 1100)).toThrow(
+      'INVALID_ANSWER',
+    );
+    expect(() => round.submit('ana', 'three', 3, 1100)).toThrow(
+      'INVALID_ANSWER',
+    );
+    round.submit('ana', 'three', 0, 1200);
+    round.submit('bob', 'three', 2, 1300);
+    expect(round.snapshot('ana')).toMatchObject({ answered: true });
+    round.close();
+    expect(round.snapshot('ana')).toMatchObject({
+      correctAnswer: 0,
+      choiceVotes: [1, 0, 1],
+      points: 25,
+    });
+    expect(round.snapshot('bob')).toMatchObject({ points: 0 });
+  });
+
+  it.each([
+    ['speed', 25, 15, 5],
+    ['precision', 25, 25, 25],
+  ] as const)(
+    'scores %s using the response time',
+    (mode, early, middle, late) => {
+      const round = new LiveGame(game().questions, undefined, mode);
+      round.open(1000);
+      round.submit('early', 'one', false, 1000);
+      round.submit('middle', 'one', false, 3500);
+      round.submit('late', 'one', false, 5999);
+      round.submit('wrong', 'one', true, 1000);
+      round.close();
+      expect(round.snapshot('early')).toMatchObject({
+        scoringMode: mode,
+        openedAt: 1000,
+        points: early,
+      });
+      expect(round.snapshot('middle').points).toBe(middle);
+      expect(round.snapshot('late').points).toBe(late);
+      expect(round.snapshot('wrong').points).toBe(0);
+    },
+  );
+
   it('records false once and rejects a response at the deadline', () => {
     const round = game();
     round.submit('ana', 'one', false, 5999);

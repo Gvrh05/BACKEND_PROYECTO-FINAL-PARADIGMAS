@@ -29,7 +29,7 @@ import { GameSessionEvents } from './game-session.events';
 import { getMeter } from '../../../tracing';
 
 interface GameSocketData {
-  user?: Pick<AuthenticatedUser, 'sub' | 'name'>;
+  user?: Pick<AuthenticatedUser, 'sub' | 'name' | 'avatarId'>;
   authentication?: Promise<void>;
   operations?: Promise<void>;
   roomCode?: string;
@@ -97,6 +97,8 @@ export class GameGateway
       if (!client.connected) return;
       client.data.user = {
         sub: user.sub,
+        ...('avatarId' in user &&
+          typeof user.avatarId === 'number' && { avatarId: user.avatarId }),
         ...(user.name && { name: user.name }),
       };
     } catch {
@@ -128,7 +130,7 @@ export class GameGateway
         userId: user.sub,
         name: existing?.name ?? user.name,
         socketId: client.id,
-        avatarId,
+        avatarId: user.avatarId ?? avatarId,
       });
       const previousRoom = client.data.roomCode;
       if (previousRoom && previousRoom !== roomCode) {
@@ -179,7 +181,7 @@ export class GameGateway
       typeof payload.avatarId !== 'number' ||
       !Number.isInteger(payload.avatarId) ||
       payload.avatarId < 0 ||
-      payload.avatarId > 9
+      payload.avatarId > 14
     )
       throw new BadRequestException('Avatar inválido');
     return payload.avatarId;
@@ -222,10 +224,10 @@ export class GameGateway
         client,
         payload,
       );
-      if (typeof answer !== 'boolean')
+      if (typeof answer !== 'boolean' && typeof answer !== 'number')
         throw new WsException({
           code: 'INVALID_ANSWER',
-          message: 'Envía Verdadero o Falso',
+          message: 'Selecciona una respuesta válida',
         });
       await this.sessions.submitAnswer(roomCode, user.sub, questionId, answer);
       this.events.toSocket(client.id, 'answer-accepted', {

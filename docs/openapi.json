@@ -125,7 +125,7 @@
           "options": {
             "type": "array",
             "minItems": 2,
-            "maxItems": 4,
+            "maxItems": 5,
             "description": "Cuatro opciones para MULTIPLE_CHOICE o Verdadero y Falso para TRUE_FALSE. Exactamente una correcta.",
             "items": {
               "$ref": "#/components/schemas/QuestionOptionInput"
@@ -184,7 +184,7 @@
           "options": {
             "type": "array",
             "minItems": 2,
-            "maxItems": 4,
+            "maxItems": 5,
             "description": "Cuatro opciones para MULTIPLE_CHOICE o Verdadero y Falso para TRUE_FALSE. Exactamente una correcta.",
             "items": {
               "$ref": "#/components/schemas/QuestionOptionInput"
@@ -373,7 +373,7 @@
           "options": {
             "type": "array",
             "minItems": 2,
-            "maxItems": 4,
+            "maxItems": 5,
             "description": "Cuatro opciones para MULTIPLE_CHOICE o Verdadero y Falso para TRUE_FALSE. Exactamente una correcta.",
             "items": {
               "$ref": "#/components/schemas/QuestionOptionResource"
@@ -417,6 +417,11 @@
           "quizId"
         ],
         "properties": {
+          "scoringMode": {
+            "type": "string",
+            "enum": ["classic", "speed", "precision"],
+            "default": "classic"
+          },
           "quizId": {
             "type": "string",
             "format": "uuid",
@@ -718,8 +723,27 @@
           "closed": {
             "type": "boolean"
           },
+          "choices": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 5,
+            "items": { "type": "string" }
+          },
+          "choiceVotes": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 5,
+            "items": { "type": "integer", "minimum": 0 },
+            "description": "Conteos por opción al cerrar la ronda."
+          },
+          "scoringMode": {
+            "type": "string",
+            "enum": ["speed", "precision"]
+          },
+          "openedAt": { "type": "integer" },
           "correctAnswer": {
-            "type": "boolean"
+            "oneOf": [{ "type": "boolean" }, { "type": "integer", "minimum": 0, "maximum": 4 }],
+            "description": "Solo al cerrar. Booleano para Verdadero/Falso o índice de la opción correcta."
           },
           "answered": {
             "type": "boolean"
@@ -781,7 +805,7 @@
         }
       },
       "QuestionResource": {
-        "description": "Pregunta persistida con cuatro opciones",
+        "description": "Pregunta persistida con dos a cinco opciones",
         "content": {
           "application/json": {
             "schema": {
@@ -1146,7 +1170,7 @@
         }
       },
       "post": {
-        "summary": "Crear pregunta propia con cuatro opciones y una correcta",
+        "summary": "Crear pregunta propia con dos a cinco opciones y una correcta",
         "tags": [
           "Questions"
         ],
@@ -1872,7 +1896,7 @@
               "format": "uuid"
             },
             "answer": {
-              "type": "boolean"
+              "oneOf": [{ "type": "boolean" }, { "type": "integer", "minimum": 0, "maximum": 4 }]
             }
           },
           "required": [

@@ -50,10 +50,14 @@ export class GameSessionService {
     private readonly events: GameSessionEvents,
   ) {}
 
-  async createSession(hostId: string, quizId: string) {
+  async createSession(
+    hostId: string,
+    quizId: string,
+    scoringMode?: ActiveSession['scoringMode'],
+  ) {
     return this.tracer.startActiveSpan('createSession', async (span) => {
       try {
-        return await this.createSessionCore(hostId, quizId);
+        return await this.createSessionCore(hostId, quizId, scoringMode);
       } catch (error) {
         span.recordException(error instanceof Error ? error : String(error));
         span.setStatus({ code: 2 });
@@ -64,7 +68,11 @@ export class GameSessionService {
     });
   }
 
-  private async createSessionCore(hostId: string, quizId: string) {
+  private async createSessionCore(
+    hostId: string,
+    quizId: string,
+    scoringMode?: ActiveSession['scoringMode'],
+  ) {
     const quiz = await this.quizzesService.findOneByOwner(quizId, hostId);
     if (!quiz)
       throw new ForbiddenException(
@@ -74,6 +82,7 @@ export class GameSessionService {
     for (let attempt = 0; attempt < 10; attempt++) {
       const session = this.sessionManager.reserveSession(hostId, quizId);
       session.name = quiz.title;
+      session.scoringMode = scoringMode;
       try {
         await this.sessions.save(
           this.sessions.create({
@@ -209,7 +218,7 @@ export class GameSessionService {
       lobby.acceptingGuests = false;
       let game: LiveGame;
       try {
-        game = await this.prepareGame(hostId, lobby.quizId);
+        game = await this.prepareGame(hostId, lobby.quizId, lobby.scoringMode);
       } catch (error) {
         lobby.acceptingGuests = true;
         throw error;
@@ -271,7 +280,7 @@ export class GameSessionService {
     roomCode: string,
     userId: string,
     questionId: string,
-    answer: boolean,
+    answer: boolean | number,
   ) {
     const started = performance.now();
     try {
@@ -447,14 +456,15 @@ export class GameSessionService {
     game.timer.unref();
   }
 
-  private async prepareGame(hostId: string, quizId: string): Promise<LiveGame> {
+  private async prepareGame(
+    hostId: string,
+    quizId: string,
+    scoringMode?: ActiveSession['scoringMode'],
+  ): Promise<LiveGame> {
     const { questions } = await this.quizzesService.findOne(hostId, quizId);
-    if (
-      !questions.length ||
-      questions.some(({ kind }) => kind !== QuestionKind.TRUE_FALSE)
-    ) {
+    if (!questions.length) {
       throw new BadRequestException(
-        'La partida requiere un cuestionario de solo preguntas Verdadero/Falso',
+        'El cuestionario necesita al menos una pregunta',
       );
     }
     const uploads = resolve(process.env.UPLOADS_DEST || './uploads');
@@ -478,17 +488,33 @@ export class GameSessionService {
           );
           imageUrl = '/uploads/live/' + basename(directory) + '/' + filename;
         }
+        // The quiz resource already orders options and omits kind for standard choices.
+        const multipleChoice = question.kind !== QuestionKind.TRUE_FALSE;
+        const { options } = question;
+        const correctIndex = options.findIndex(({ isCorrect }) => isCorrect);
+        if (
+          multipleChoice &&
+          (options.length < 2 || options.length > 5 || correctIndex < 0)
+        ) {
+          throw new BadRequestException(
+            'La pregunta de opción múltiple no tiene opciones válidas',
+          );
+        }
+
         snapshot.push({
           id: question.id,
           questionText: question.questionText,
           imageUrl,
           timeLimitSeconds: question.timeLimitSeconds ?? 20,
-          correctAnswer: question.options.some(
-            ({ text, isCorrect }) => text === 'Verdadero' && isCorrect,
-          ),
+          ...(multipleChoice && { choices: options.map(({ text }) => text) }),
+          correctAnswer: multipleChoice
+            ? correctIndex
+            : options.some(
+                ({ text, isCorrect }) => text === 'Verdadero' && isCorrect,
+              ),
         });
       }
-      return new LiveGame(snapshot, directory);
+      return new LiveGame(snapshot, directory, scoringMode);
     } catch (error) {
       if (directory) await rm(directory, { recursive: true, force: true });
       throw error;

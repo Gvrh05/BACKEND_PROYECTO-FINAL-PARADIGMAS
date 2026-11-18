@@ -172,7 +172,7 @@ describe('SessionManager', () => {
     expect(() =>
       manager.addPlayer(room.pin, {
         userId: guest.participantId,
-        avatarId: 10,
+        avatarId: 15,
       }),
     ).toThrow(BadRequestException);
     manager.addPlayer(room.pin, {
