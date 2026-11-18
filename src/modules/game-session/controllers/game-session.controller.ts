@@ -40,7 +40,11 @@ export class GameSessionController {
     @Req() request: AuthenticatedRequest,
     @Body() body: CreateGameSessionDto,
   ): Promise<SessionResponseDto> {
-    return this.sessions.createSession(request.user.sub, body.quizId);
+    return this.sessions.createSession(
+      request.user.sub,
+      body.quizId,
+      body.scoringMode,
+    );
   }
 
   // Static route MUST precede :roomCode; do not use the mock GET /quizzes.
@@ -79,6 +83,7 @@ export class GameSessionController {
       roomCode,
       userId: request.user.sub,
       name: body.name ?? request.user.name,
+      avatarId: request.user.avatarId,
     });
   }
 

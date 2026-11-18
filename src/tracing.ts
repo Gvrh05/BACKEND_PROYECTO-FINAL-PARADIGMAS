@@ -21,5 +21,5 @@ if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT?.trim()) {
         process.env.OTEL_DEPLOYMENT_ENVIRONMENT || 'local',
     },
   });
-  // FrontendHealthService owns the single bounded frontend probe.
+  // FrontendHealthService owns the single bounded probe; avoid duplicate gauges.
 }

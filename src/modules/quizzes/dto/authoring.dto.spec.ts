@@ -49,8 +49,12 @@ describe('Authoring DTOs', () => {
   it.each(
     [
       [],
-      options().slice(1),
-      [...options(), { text: 'Extra', isCorrect: false }],
+      options().slice(0, 1),
+      [
+        ...options(),
+        { text: 'Extra 1', isCorrect: false },
+        { text: 'Extra 2', isCorrect: false },
+      ],
     ].map((choices) => ({ choices })),
   )('rejects a wrong option count', ({ choices }) => {
     expect(
