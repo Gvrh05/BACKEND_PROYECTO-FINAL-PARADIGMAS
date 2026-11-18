@@ -10,7 +10,8 @@ if (!existsSync(envPath)) {
     POSTGRES_PASSWORD: randomBytes(24).toString('hex'),
     AUTH_POSTGRES_PASSWORD: randomBytes(24).toString('hex'),
     JWT_SECRET: randomBytes(48).toString('hex'),
-    DEMO_USER_PASSWORD: randomBytes(18).toString('hex'),
+    DEMO_USER_USERNAME: 'profesor_test',
+    DEMO_USER_PASSWORD: 'Profesor123!',
   };
   let content = readFileSync(resolve(root, '.env.example'), 'utf8');
   for (const [key, value] of Object.entries(values)) {

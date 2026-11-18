@@ -1,0 +1,5 @@
+- [x] Implementar probe, CORS REST/WS, Compose y dashboard.
+- [x] Documentar configuración pública Netlify/Railway sin secretos.
+- [x] Build, lint, 123 unitarias, 72 e2e y recepción OTLP/protobuf aislada.
+- [ ] Verificar producción y dashboard Cloud tras configurar credenciales y redeploy.
+- [ ] Evidencia física con dos dispositivos y reconexión.

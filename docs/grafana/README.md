@@ -1,5 +1,8 @@
 # Grafana Cloud para partida en vivo
 
+Guía actual con las URLs públicas, CORS, Netlify y consultas:
+[Railway + Netlify + Grafana Cloud](railway-netlify.md).
+
 En Grafana Cloud, abre la instancia del equipo y selecciona **OpenTelemetry → Configure**. Copia el endpoint base OTLP que termina en `/otlp` y el valor del encabezado de autenticación. Configura estas variables en el proceso de la API o en su `.env` ignorado por Git.
 
 ```dotenv

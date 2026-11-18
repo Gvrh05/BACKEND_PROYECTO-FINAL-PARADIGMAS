@@ -1,0 +1,2 @@
+## Decisions
+Probe de URL HTTP(S) administrada desde entorno, sin input del usuario, credenciales ni query; timeout 5 s, frecuencia 10 s, sin solapamientos ni redirects. Exportar 1 con 2xx y 0 con error, desactivar sin URL. SDK conserva métricas gameplay y recursos por servicio/entorno. No confundir respuesta HTTP del frontend con una prueba funcional de la app. CORS exacto compartido con Socket.IO. No publicar secretos ni marcar evidencia Cloud sin acceso y series reales.

@@ -1,0 +1,5 @@
+- [x] Incluir diez PNG y generador reproducible.
+- [x] Backfill de imágenes ausentes sin sobrescribir archivos ni asociaciones.
+- [x] Tests de preservación y validación de seed.
+- [x] Ejecutar seed dos veces, comprobar snapshot idéntico y diez imágenes servidas por HTTP/cargadas en Edge.
+- [ ] Publicar imagen backend y ejecutar seed en Railway cuando exista acceso.

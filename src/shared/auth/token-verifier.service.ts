@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 
 export interface AuthenticatedUser {
   sub: string;
+  avatarId?: number;
   email?: string;
   role?: string;
   name?: string;
@@ -91,6 +92,10 @@ export class TokenVerifier {
       sub: claims.sub,
       role: profile.role as string,
       name: profile.username,
+      ...(typeof profile.avatarId === 'number' &&
+        Number.isInteger(profile.avatarId) &&
+        profile.avatarId >= 0 &&
+        profile.avatarId <= 14 && { avatarId: profile.avatarId }),
     };
   }
 }
