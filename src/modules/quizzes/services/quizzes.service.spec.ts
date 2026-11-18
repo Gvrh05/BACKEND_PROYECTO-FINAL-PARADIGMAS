@@ -1,5 +1,7 @@
 import { DataSource } from 'typeorm';
 import { Quiz } from '../entities/quiz.entity';
+import { DEFAULT_DRAGONBALL_QUIZ_ID } from './dragonball-catalog';
+import { DEFAULT_POKEMON_QUIZ_ID } from './pokemon-catalog';
 import { QuizzesService } from './quizzes.service';
 
 describe('QuizzesService additive ownership queries against the authoring schema', () => {
@@ -31,16 +33,32 @@ describe('QuizzesService additive ownership queries against the authoring schema
           ),
         ),
       ),
-      find: jest.fn(({ where }: { where: { authorId: string } }) =>
-        Promise.resolve(quizzes.filter((q) => q.authorId === where.authorId)),
+      find: jest.fn(({ where }: { where: { authorId: string }[] }) =>
+        Promise.resolve(
+          quizzes.filter((q) => q.authorId === where[0].authorId),
+        ),
       ),
     };
     service = new QuizzesService({
+      transaction: (work: (manager: unknown) => unknown) =>
+        work({
+          query: jest.fn().mockResolvedValue([]),
+          findOneBy: jest
+            .fn()
+            .mockResolvedValue({ id: DEFAULT_POKEMON_QUIZ_ID }),
+          find: jest.fn().mockResolvedValue([]),
+        }),
       getRepository: (entity: unknown) => {
         expect(entity).toBe(Quiz);
         return repository;
       },
     } as unknown as DataSource);
+    jest
+      .spyOn(
+        service as unknown as { ensureStarterQuizzes(): Promise<void> },
+        'ensureStarterQuizzes',
+      )
+      .mockResolvedValue(undefined);
   });
 
   it('queries id and authorId, returning null for absent/foreign quizzes', async () => {
@@ -66,7 +84,11 @@ describe('QuizzesService additive ownership queries against the authoring schema
     const publicList = jest.spyOn(service, 'findAll');
     await expect(service.findAllByOwner(host)).resolves.toEqual([own]);
     expect(repository.find).toHaveBeenCalledWith({
-      where: { authorId: host },
+      where: [
+        { authorId: host },
+        { id: DEFAULT_POKEMON_QUIZ_ID, isDemo: true },
+        { id: DEFAULT_DRAGONBALL_QUIZ_ID, isDemo: true },
+      ],
       order: { createdAt: 'ASC' },
     });
     expect(publicList).not.toHaveBeenCalled();

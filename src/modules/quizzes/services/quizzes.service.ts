@@ -14,42 +14,57 @@ import { QuestionKind } from '../entities/question.entity';
 import { QuestionOption } from '../entities/question-option.entity';
 import { enqueueCleanup } from './enqueue-cleanup';
 import { quizAuthorId } from '../../../shared/database/punto3-demo-owner';
-import { PokeApiService, type PokemonFact } from './poke-api.service';
+import { copyFile, mkdir, stat, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { join, resolve } from 'node:path';
+import {
+  DEFAULT_POKEMON_QUIZ_ID,
+  POKEMON_ASSETS,
+  pokemonQuestions,
+} from './pokemon-catalog';
+import {
+  DEFAULT_DRAGONBALL_QUIZ_ID,
+  DRAGONBALL_ASSETS,
+  dragonballQuestions,
+} from './dragonball-catalog';
 
-const TYPE_NAMES: Record<string, string> = {
-  bug: 'bicho',
-  dark: 'siniestro',
-  dragon: 'dragón',
-  electric: 'eléctrico',
-  fairy: 'hada',
-  fighting: 'lucha',
-  fire: 'fuego',
-  flying: 'volador',
-  ghost: 'fantasma',
-  grass: 'planta',
-  ground: 'tierra',
-  ice: 'hielo',
-  normal: 'normal',
-  poison: 'veneno',
-  psychic: 'psíquico',
-  rock: 'roca',
-  steel: 'acero',
-  water: 'agua',
-};
-const FALSE_TYPES = ['fire', 'water', 'electric', 'grass', 'psychic', 'ghost'];
+const starterQuizzes = [
+  {
+    id: DEFAULT_POKEMON_QUIZ_ID,
+    title: 'Pokémon · Desafío de la Pokédex',
+    description:
+      'Pon a prueba tus conocimientos sobre estadísticas base, tipos combinados y características de 10 Pokémon. 20 preguntas ilustradas sobre sus formas estándar.',
+    assets: POKEMON_ASSETS,
+    questions: pokemonQuestions,
+  },
+  {
+    id: DEFAULT_DRAGONBALL_QUIZ_ID,
+    title: 'Dragon Ball · Desafío de los Guerreros Z',
+    description:
+      'Recorre las historias de Goku, Vegeta y los Guerreros Z con 20 preguntas ilustradas sobre sus familias, aliados, enemigos y transformaciones.',
+    assets: DRAGONBALL_ASSETS,
+    questions: dragonballQuestions,
+  },
+];
+const starterConditions = starterQuizzes.map(({ id }) => ({
+  id,
+  isDemo: true,
+}));
 
 @Injectable()
 export class QuizzesService {
-  constructor(
-    private readonly dataSource: DataSource,
-    private readonly pokeApi: PokeApiService,
-  ) {}
+  constructor(private readonly dataSource: DataSource) {}
 
   async findOneByOwner(quizId: string, ownerId: string): Promise<Quiz | null> {
     const authorId = quizAuthorId(ownerId);
-    return authorId
-      ? this.dataSource.getRepository(Quiz).findOneBy({ id: quizId, authorId })
-      : null;
+    if (!authorId) return null;
+    const repository = this.dataSource.getRepository(Quiz);
+    const starter = starterQuizzes.find((item) => item.id === quizId);
+    if (starter) {
+      await this.saveStarterQuiz(starter.id, starter, true);
+      return repository.findOneBy({ id: quizId, isDemo: true });
+    }
+    return repository.findOneBy({ id: quizId, authorId });
   }
 
   async existsAndOwnedBy(quizId: string, ownerId: string): Promise<boolean> {
@@ -61,11 +76,12 @@ export class QuizzesService {
 
   async findAllByOwner(ownerId: string): Promise<Quiz[]> {
     const authorId = quizAuthorId(ownerId);
-    return authorId
-      ? this.dataSource
-          .getRepository(Quiz)
-          .find({ where: { authorId }, order: { createdAt: 'ASC' } })
-      : [];
+    if (!authorId) return [];
+    await this.ensureStarterQuizzes();
+    return this.dataSource.getRepository(Quiz).find({
+      where: [{ authorId }, ...starterConditions],
+      order: { createdAt: 'ASC' },
+    });
   }
 
   async create(userId: string, dto: CreateQuizDto) {
@@ -79,56 +95,154 @@ export class QuizzesService {
   }
 
   async createPokemonQuiz(userId: string) {
-    // Fetch before the transaction: no partial quiz is stored if PokéAPI is down.
-    const facts = await this.pokeApi.getStarterFacts();
-    const quiz = await this.dataSource.transaction(async (manager) => {
-      const created = await manager.save(Quiz, {
-        authorId: userId,
-        title: 'Pokémon: Verdadero o Falso',
-        description:
-          'Quiz generado con datos de PokéAPI. Las preguntas quedan guardadas para jugar sin conexión a PokéAPI.',
-      });
-      for (const [index, fact] of facts.entries()) {
-        const correct = index % 2 === 0;
-        const statedType = correct ? fact.primaryType : this.falseType(fact);
-        const question = await manager.save(Question, {
-          quizId: created.id,
-          kind: QuestionKind.TRUE_FALSE,
-          questionText: `¿${this.displayName(fact.name)} es de tipo ${TYPE_NAMES[statedType] ?? statedType}?`,
-          timeLimitSeconds: 20,
-          points: 1000,
+    return serializeQuiz(await this.saveStarterQuiz(userId, starterQuizzes[0]));
+  }
+
+  private async ensureStarterQuizzes() {
+    for (const starter of starterQuizzes) {
+      await this.saveStarterQuiz(starter.id, starter, true);
+    }
+  }
+
+  private async saveStarterQuiz(
+    userId: string,
+    catalog: (typeof starterQuizzes)[number],
+    starter = false,
+  ): Promise<Quiz> {
+    const plans = await catalog.questions();
+    const files: string[] = [];
+    const folder = resolve(
+      process.env.UPLOADS_DEST || './uploads',
+      'questions',
+    );
+    await mkdir(folder, { recursive: true });
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        if (starter) {
+          // Every concurrent first login shares one complete starter quiz.
+          await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+            catalog.id,
+          ]);
+          const existing = await manager.findOneBy(Quiz, {
+            id: catalog.id,
+          });
+          if (existing) {
+            const questions = await manager.find(Question, {
+              where: { quizId: existing.id },
+              relations: { options: true },
+              order: { createdAt: 'ASC', id: 'ASC' },
+            });
+            const unchanged =
+              questions.length === plans.length &&
+              questions.every((question, index) => {
+                const plan = plans[index];
+                const options = [...question.options].sort(
+                  (a, b) => a.position - b.position,
+                );
+                return (
+                  question.questionText === plan.text &&
+                  question.kind ===
+                    (plan.binary
+                      ? QuestionKind.TRUE_FALSE
+                      : QuestionKind.MULTIPLE_CHOICE) &&
+                  options.length === plan.options.length &&
+                  options.every(
+                    (option, position) =>
+                      option.text === plan.options[position] &&
+                      option.isCorrect === (position === plan.correctIndex),
+                  )
+                );
+              });
+            if (!unchanged) {
+              // Only the fixed, read-only starter is refreshed. Existing live games use snapshots.
+              await enqueueCleanup(
+                manager,
+                questions.flatMap((question) =>
+                  question.imageStorageKey ? [question.imageStorageKey] : [],
+                ),
+              );
+              await manager.delete(Question, { quizId: existing.id });
+            } else {
+              for (const question of questions) {
+                const plan = plans.find(
+                  (item) => item.text === question.questionText,
+                );
+                if (!plan || !question.imageStorageKey) continue;
+                const target = join(folder, question.imageStorageKey);
+                try {
+                  await stat(target);
+                } catch (error) {
+                  if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+                    throw error;
+                  await copyFile(join(catalog.assets, plan.image), target);
+                }
+              }
+              if (
+                existing.title !== catalog.title ||
+                existing.description !== catalog.description
+              ) {
+                await manager.update(Quiz, existing.id, {
+                  title: catalog.title,
+                  description: catalog.description,
+                });
+              }
+              return {
+                ...existing,
+                title: catalog.title,
+                description: catalog.description,
+              };
+            }
+          }
+        }
+        const created = await manager.save(Quiz, {
+          ...(starter && { id: catalog.id }),
+          authorId: userId,
+          isDemo: starter,
+          title: catalog.title,
+          description: catalog.description,
         });
-        await manager.save(QuestionOption, [
-          {
-            questionId: question.id,
-            position: 0,
-            text: 'Verdadero',
-            isCorrect: correct,
-          },
-          {
-            questionId: question.id,
-            position: 1,
-            text: 'Falso',
-            isCorrect: !correct,
-          },
-        ]);
-      }
-      return created;
-    });
-    return serializeQuiz(quiz);
-  }
-
-  private falseType(fact: PokemonFact): string {
-    return FALSE_TYPES.find((type) => type !== fact.primaryType) ?? 'normal';
-  }
-
-  private displayName(value: string): string {
-    return value.charAt(0).toUpperCase() + value.slice(1);
+        for (const [index, plan] of plans.entries()) {
+          const filename = randomUUID() + '.png';
+          const target = join(folder, filename);
+          files.push(target);
+          await copyFile(join(catalog.assets, plan.image), target);
+          const metadata = await stat(target);
+          const question = await manager.save(Question, {
+            quizId: created.id,
+            kind: plan.binary
+              ? QuestionKind.TRUE_FALSE
+              : QuestionKind.MULTIPLE_CHOICE,
+            questionText: plan.text,
+            timeLimitSeconds: plan.binary ? 25 : 35,
+            points: 1000,
+            createdAt: new Date(Date.now() + index),
+            imageStorageKey: filename,
+            imageUrl: '/uploads/questions/' + filename,
+            imageMimeType: 'image/png',
+            imageSize: metadata.size,
+          });
+          await manager.save(
+            QuestionOption,
+            plan.options.map((text, position) => ({
+              questionId: question.id,
+              position,
+              text,
+              isCorrect: position === plan.correctIndex,
+            })),
+          );
+        }
+        return created;
+      });
+    } catch (error) {
+      await Promise.all(files.map((file) => rm(file, { force: true })));
+      throw error;
+    }
   }
 
   async findAll(userId: string) {
+    await this.ensureStarterQuizzes();
     const quizzes = await this.dataSource.getRepository(Quiz).find({
-      where: [{ authorId: userId }, { isDemo: true }],
+      where: [{ authorId: userId }, ...starterConditions],
       order: { createdAt: 'DESC', id: 'DESC' },
     });
     return quizzes.map(serializeQuiz);

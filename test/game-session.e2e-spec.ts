@@ -17,6 +17,7 @@ import { GameSessionEvents } from '../src/modules/game-session/gateways/game-ses
 import { SessionManager } from '../src/modules/game-session/engine/session-manager';
 import { GameSessionEntity } from '../src/modules/game-session/entities/game-session.entity';
 import { PokeApiService } from '../src/modules/quizzes/services/poke-api.service';
+import { DEFAULT_POKEMON_QUIZ_ID } from '../src/modules/quizzes/services/pokemon-catalog';
 import { QuizzesService } from '../src/modules/quizzes/services/quizzes.service';
 import type { SessionSnapshotDto } from '../src/modules/game-session/dto/session-response.dto';
 import type { ParticipantDto } from '../src/modules/game-session/dto/participant.dto';
@@ -136,6 +137,14 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
         {
           provide: DataSource,
           useValue: {
+            transaction: (work: (manager: unknown) => unknown) =>
+              work({
+                query: jest.fn().mockResolvedValue([]),
+                findOneBy: jest
+                  .fn()
+                  .mockResolvedValue({ id: DEFAULT_POKEMON_QUIZ_ID }),
+                find: jest.fn().mockResolvedValue([]),
+              }),
             getRepository: () => ({
               findOne: () => Promise.resolve(quizRows[0]),
               findOneBy: (where: { id: string; authorId: string }) =>
@@ -145,9 +154,9 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
                       row.id === where.id && row.authorId === where.authorId,
                   ) ?? null,
                 ),
-              find: ({ where }: { where: { authorId: string } }) =>
+              find: ({ where }: { where: { authorId: string }[] }) =>
                 Promise.resolve(
-                  quizRows.filter((row) => row.authorId === where.authorId),
+                  quizRows.filter((row) => row.authorId === where[0].authorId),
                 ),
             }),
           },
@@ -182,6 +191,12 @@ describe('Game sessions HTTP + Socket.IO (e2e)', () => {
       .overrideProvider(ConfigService)
       .useValue(new ConfigService(config))
       .compile();
+    jest
+      .spyOn(
+        module.get<{ ensureStarterQuizzes(): Promise<void> }>(QuizzesService),
+        'ensureStarterQuizzes',
+      )
+      .mockResolvedValue(undefined);
     app = module.createNestApplication({ logger: false });
     app.setGlobalPrefix(APP_CONFIG.GLOBAL_PREFIX);
     app.useGlobalFilters(new HttpExceptionFilter());

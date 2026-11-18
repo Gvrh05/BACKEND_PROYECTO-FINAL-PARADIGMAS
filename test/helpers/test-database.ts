@@ -11,6 +11,7 @@ import { DemoQuiz1794000000002 } from '../../src/shared/database/migrations/1794
 import { PublicQuestionImageUrl1794000000003 } from '../../src/shared/database/migrations/1794000000003-PublicQuestionImageUrl';
 import { GameSessions1794000000004 } from '../../src/shared/database/migrations/1794000000004-GameSessions';
 import { TrueFalseQuestions1794000000005 } from '../../src/shared/database/migrations/1794000000005-TrueFalseQuestions';
+import { PokemonStarter1794000000008 } from '../../src/shared/database/migrations/1794000000008-PokemonStarter';
 import { FlexibleQuestionOptions1794000000007 } from '../../src/shared/database/migrations/1794000000007-FlexibleQuestionOptions';
 import { LiveGameResult1794000000006 } from '../../src/shared/database/migrations/1794000000006-LiveGameResult';
 import { GameSessionEntity } from '../../src/modules/game-session/entities/game-session.entity';
@@ -46,6 +47,7 @@ export async function createTestDatabase() {
       TrueFalseQuestions1794000000005,
       LiveGameResult1794000000006,
       FlexibleQuestionOptions1794000000007,
+      PokemonStarter1794000000008,
     ],
   });
   await dataSource.initialize();
